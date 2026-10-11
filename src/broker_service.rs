@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::os::fd::{AsFd, OwnedFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -749,7 +749,7 @@ async fn authenticated_caller(
         BrokerDbusError::AccessDenied("caller has no process descriptor".to_owned())
     })?;
     let (authorization_pid, authorization_pidfd) =
-        authenticated_parent_process(pid, pidfd.as_fd())?;
+        authenticated_parent_process(pid, uid, pidfd.as_fd())?;
     Ok(CallerIdentity::from_authenticated_sender(
         sender.as_str().to_owned(),
         uid,
@@ -760,23 +760,11 @@ async fn authenticated_caller(
 
 fn authenticated_parent_process(
     caller_pid: u32,
-    _caller_pidfd: std::os::fd::BorrowedFd<'_>,
+    caller_uid: u32,
+    caller_pidfd: BorrowedFd<'_>,
 ) -> Result<(u32, OwnedFd), BrokerDbusError> {
-    let stat = std::fs::read_to_string(format!("/proc/{caller_pid}/stat")).map_err(|_| {
-        BrokerDbusError::AccessDenied("failed to inspect caller process".to_owned())
-    })?;
-    let command_end = stat.rfind(')').ok_or_else(|| {
-        BrokerDbusError::AccessDenied("invalid caller process metadata".to_owned())
-    })?;
-    let fields = stat.get(command_end + 2..).ok_or_else(|| {
-        BrokerDbusError::AccessDenied("invalid caller process metadata".to_owned())
-    })?;
-    let parent_pid = fields
-        .split_ascii_whitespace()
-        .nth(1)
-        .ok_or_else(|| BrokerDbusError::AccessDenied("missing caller parent process".to_owned()))?
-        .parse::<u32>()
-        .map_err(|_| BrokerDbusError::AccessDenied("invalid caller parent process".to_owned()))?;
+    verify_pidfd_identifies(caller_pidfd, caller_pid)?;
+    let parent_pid = read_parent_pid(caller_pid)?;
     if parent_pid <= 1 {
         return Err(BrokerDbusError::AccessDenied(
             "caller has no retainable parent process".to_owned(),
@@ -787,28 +775,68 @@ fn authenticated_parent_process(
         .ok_or_else(|| BrokerDbusError::AccessDenied("invalid caller parent process".to_owned()))?;
     let parent_pidfd = rustix::process::pidfd_open(parent, rustix::process::PidfdFlags::empty())
         .map_err(|_| BrokerDbusError::AccessDenied("caller parent process exited".to_owned()))?;
+    verify_pidfd_identifies(parent_pidfd.as_fd(), parent_pid)?;
 
-    // Re-read the caller metadata after pinning its parent. This closes the reparenting race
-    // between the first stat read and pidfd_open; the authenticated pidfd remains held throughout.
-    let current_stat = std::fs::read_to_string(format!("/proc/{caller_pid}/stat"))
-        .map_err(|_| BrokerDbusError::AccessDenied("caller process exited".to_owned()))?;
-    let current_end = current_stat.rfind(')').ok_or_else(|| {
-        BrokerDbusError::AccessDenied("invalid caller process metadata".to_owned())
-    })?;
-    let current_parent = current_stat
-        .get(current_end + 2..)
-        .and_then(|fields| fields.split_ascii_whitespace().nth(1))
-        .and_then(|parent| parent.parse::<u32>().ok())
-        .ok_or_else(|| BrokerDbusError::AccessDenied("invalid caller parent process".to_owned()))?;
-    if current_parent != parent_pid {
+    // Re-read after pinning both processes to close PID reuse and reparenting races.
+    verify_pidfd_identifies(caller_pidfd, caller_pid)?;
+    if read_parent_pid(caller_pid)? != parent_pid {
         return Err(BrokerDbusError::AccessDenied(
             "caller parent changed during authentication".to_owned(),
+        ));
+    }
+    if read_effective_uid(parent_pid)? != caller_uid {
+        return Err(BrokerDbusError::AccessDenied(
+            "caller parent belongs to another user".to_owned(),
         ));
     }
 
     Ok((parent_pid, parent_pidfd))
 }
 
+fn verify_pidfd_identifies(
+    pidfd: BorrowedFd<'_>,
+    expected_pid: u32,
+) -> Result<(), BrokerDbusError> {
+    let info = std::fs::read_to_string(format!("/proc/self/fdinfo/{}", pidfd.as_raw_fd()))
+        .map_err(|_| {
+            BrokerDbusError::AccessDenied("process descriptor is no longer valid".to_owned())
+        })?;
+    let actual_pid = info
+        .lines()
+        .find_map(|line| line.strip_prefix("Pid:"))
+        .and_then(|value| value.trim().parse::<u32>().ok())
+        .ok_or_else(|| BrokerDbusError::AccessDenied("invalid process descriptor".to_owned()))?;
+    if actual_pid != expected_pid {
+        return Err(BrokerDbusError::AccessDenied(
+            "process descriptor does not match process ID".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn read_parent_pid(pid: u32) -> Result<u32, BrokerDbusError> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).map_err(|_| {
+        BrokerDbusError::AccessDenied("failed to inspect caller process".to_owned())
+    })?;
+    let command_end = stat.rfind(')').ok_or_else(|| {
+        BrokerDbusError::AccessDenied("invalid caller process metadata".to_owned())
+    })?;
+    stat.get(command_end + 2..)
+        .and_then(|fields| fields.split_ascii_whitespace().nth(1))
+        .and_then(|parent| parent.parse::<u32>().ok())
+        .ok_or_else(|| BrokerDbusError::AccessDenied("invalid caller parent process".to_owned()))
+}
+
+fn read_effective_uid(pid: u32) -> Result<u32, BrokerDbusError> {
+    let status = std::fs::read_to_string(format!("/proc/{pid}/status"))
+        .map_err(|_| BrokerDbusError::AccessDenied("failed to inspect caller parent".to_owned()))?;
+    status
+        .lines()
+        .find_map(|line| line.strip_prefix("Uid:"))
+        .and_then(|value| value.split_ascii_whitespace().nth(1))
+        .and_then(|uid| uid.parse::<u32>().ok())
+        .ok_or_else(|| BrokerDbusError::AccessDenied("invalid caller parent identity".to_owned()))
+}
 async fn owner_change_stream(
     connection: &Connection,
     sender: &str,
