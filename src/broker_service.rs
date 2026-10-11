@@ -531,11 +531,11 @@ impl BrokerManager {
         ));
         let mut shutdown = self.shutdown.clone();
         let shutdown_cancellation = cancellation.clone();
-        tokio::spawn(async move {
+        let _shutdown_monitor = AbortOnDrop(tokio::spawn(async move {
             if shutdown.changed().await.is_ok() && *shutdown.borrow() {
                 shutdown_cancellation.cancel(CancellationReason::Shutdown);
             }
-        });
+        }));
         let request = AuthorizationRequest::for_validation(&caller, allow_interaction)
             .map_err(|_| BrokerDbusError::Failed("authorization setup failed".to_owned()))?;
         let authority = ZbusAuthority::new(self.connection.clone());
@@ -559,11 +559,11 @@ async fn run_pipeline(
     mut shutdown: watch::Receiver<bool>,
 ) {
     let shutdown_cancellation = cancellation.clone();
-    tokio::spawn(async move {
+    let _shutdown_monitor = AbortOnDrop(tokio::spawn(async move {
         if shutdown.changed().await.is_ok() && *shutdown.borrow() {
             shutdown_cancellation.cancel(CancellationReason::Shutdown);
         }
-    });
+    }));
 
     let cwd_identity = match prepared.cwd().identity() {
         Ok(identity) => identity,
