@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::os::fd::{AsFd, OwnedFd};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -24,6 +26,12 @@ const PHASE_COMPLETE: u8 = 3;
 const PHASE_FAILED: u8 = 4;
 const PHASE_CANCELLED: u8 = 5;
 const PHASE_DENIED: u8 = 6;
+
+const MAX_GLOBAL_INVOCATIONS: usize = 256;
+const MAX_OWNER_INVOCATIONS: usize = 16;
+const MAX_GLOBAL_VALIDATIONS: usize = 64;
+const MAX_OWNER_VALIDATIONS: usize = 4;
+const INVOCATION_EXPIRY: Duration = Duration::from_secs(60);
 
 const OUTCOME_NONE: u8 = 0;
 const OUTCOME_EXITED: u8 = 1;
@@ -123,6 +131,7 @@ struct SharedInvocation {
     cancellation: Cancellation,
     state: Mutex<InvocationState>,
     changed: Notify,
+    terminal: Notify,
 }
 
 impl SharedInvocation {
@@ -136,6 +145,7 @@ impl SharedInvocation {
                 released: false,
             }),
             changed: Notify::new(),
+            terminal: Notify::new(),
         }
     }
 
@@ -152,8 +162,22 @@ impl SharedInvocation {
     }
 
     fn update(&self, status: InvocationStatusWire) {
+        let terminal = status.terminal;
         self.state.lock().unwrap().status = status;
         self.changed.notify_waiters();
+        if terminal {
+            self.terminal.notify_waiters();
+        }
+    }
+
+    async fn wait_until_terminal(&self) {
+        loop {
+            let notified = self.terminal.notified();
+            if self.state.lock().unwrap().status.terminal {
+                return;
+            }
+            notified.await;
+        }
     }
 
     fn install_pty(&self, pty_master: OwnedFd) {
@@ -171,24 +195,52 @@ impl SharedInvocation {
     }
 }
 
+#[derive(Debug)]
+struct InvocationPermit {
+    owner: String,
+    limits: Arc<BrokerLimits>,
+}
+
+impl Drop for InvocationPermit {
+    fn drop(&mut self) {
+        self.limits.release_invocation(&self.owner);
+    }
+}
+
 #[derive(Debug, Clone)]
 struct InvocationObject {
     shared: Arc<SharedInvocation>,
     connection: Connection,
     path: OwnedObjectPath,
+    _permit: Arc<InvocationPermit>,
 }
 
 impl InvocationObject {
     fn schedule_removal(&self) {
         let connection = self.connection.clone();
         let path = self.path.clone();
+        let shared = self.shared.clone();
         tokio::spawn(async move {
-            let _ = connection
-                .object_server()
-                .remove::<InvocationObject, _>(path)
-                .await;
+            remove_invocation(&connection, path, &shared).await;
         });
     }
+}
+
+async fn remove_invocation(
+    connection: &Connection,
+    path: OwnedObjectPath,
+    shared: &SharedInvocation,
+) {
+    let _ = connection
+        .object_server()
+        .remove::<InvocationObject, _>(path)
+        .await;
+    shared.cancellation.cancel(CancellationReason::Caller);
+    let mut state = shared.state.lock().unwrap();
+    state.pty_master = None;
+    state.released = true;
+    drop(state);
+    shared.changed.notify_waiters();
 }
 
 #[interface(name = "io.github.passcod.sud0.Invocation1")]
@@ -279,16 +331,98 @@ impl InvocationObject {
     }
 }
 
+#[derive(Debug, Default)]
+struct LimitState {
+    invocations: HashMap<String, usize>,
+    validations: HashMap<String, usize>,
+}
+
+#[derive(Debug, Default)]
+struct BrokerLimits {
+    state: Mutex<LimitState>,
+}
+
+impl BrokerLimits {
+    fn acquire_invocation(
+        self: &Arc<Self>,
+        owner: &str,
+    ) -> Result<Arc<InvocationPermit>, BrokerDbusError> {
+        let mut state = self.state.lock().unwrap();
+        let global = state.invocations.values().sum::<usize>();
+        let owner_count = state.invocations.get(owner).copied().unwrap_or_default();
+        if global >= MAX_GLOBAL_INVOCATIONS || owner_count >= MAX_OWNER_INVOCATIONS {
+            return Err(BrokerDbusError::LimitsExceeded(
+                "too many outstanding invocations".to_owned(),
+            ));
+        }
+        state.invocations.insert(owner.to_owned(), owner_count + 1);
+        Ok(Arc::new(InvocationPermit {
+            owner: owner.to_owned(),
+            limits: self.clone(),
+        }))
+    }
+
+    fn acquire_validation(
+        self: &Arc<Self>,
+        owner: &str,
+    ) -> Result<ValidationPermit, BrokerDbusError> {
+        let mut state = self.state.lock().unwrap();
+        let global = state.validations.values().sum::<usize>();
+        let owner_count = state.validations.get(owner).copied().unwrap_or_default();
+        if global >= MAX_GLOBAL_VALIDATIONS || owner_count >= MAX_OWNER_VALIDATIONS {
+            return Err(BrokerDbusError::LimitsExceeded(
+                "too many concurrent validations".to_owned(),
+            ));
+        }
+        state.validations.insert(owner.to_owned(), owner_count + 1);
+        Ok(ValidationPermit {
+            owner: owner.to_owned(),
+            limits: self.clone(),
+        })
+    }
+
+    fn release_invocation(&self, owner: &str) {
+        release_limit(&mut self.state.lock().unwrap().invocations, owner);
+    }
+
+    fn release_validation(&self, owner: &str) {
+        release_limit(&mut self.state.lock().unwrap().validations, owner);
+    }
+}
+
+fn release_limit(counts: &mut HashMap<String, usize>, owner: &str) {
+    let Some(count) = counts.get_mut(owner) else {
+        return;
+    };
+    *count -= 1;
+    if *count == 0 {
+        counts.remove(owner);
+    }
+}
+
+#[derive(Debug)]
+struct ValidationPermit {
+    owner: String,
+    limits: Arc<BrokerLimits>,
+}
+
+impl Drop for ValidationPermit {
+    fn drop(&mut self) {
+        self.limits.release_validation(&self.owner);
+    }
+}
+
 /// Public broker manager registered at the stable service path.
 #[derive(Debug, Clone)]
 pub struct BrokerManager {
     connection: Connection,
     launcher: SystemdLauncher,
+    limits: Arc<BrokerLimits>,
     shutdown: watch::Receiver<bool>,
 }
 
 impl BrokerManager {
-    pub const fn new(
+    pub fn new(
         connection: Connection,
         launcher: SystemdLauncher,
         shutdown: watch::Receiver<bool>,
@@ -296,6 +430,7 @@ impl BrokerManager {
         Self {
             connection,
             launcher,
+            limits: Arc::new(BrokerLimits::default()),
             shutdown,
         }
     }
@@ -309,6 +444,7 @@ impl BrokerManager {
         #[zbus(header)] header: Header<'_>,
     ) -> Result<OwnedObjectPath, BrokerDbusError> {
         let caller = authenticated_caller(&self.connection, &header).await?;
+        let permit = self.limits.acquire_invocation(caller.sender())?;
         let prepared = PreparedRequest::from_wire(wire)
             .map_err(|_| BrokerDbusError::InvalidRequest("invalid run request".to_owned()))?;
         let cancellation = Cancellation::new();
@@ -326,6 +462,7 @@ impl BrokerManager {
                     shared: shared.clone(),
                     connection: self.connection.clone(),
                     path: path.clone(),
+                    _permit: permit.clone(),
                 },
             )
             .await
@@ -334,7 +471,13 @@ impl BrokerManager {
         spawn_owner_monitor(
             owner_changes,
             shared.clone(),
-            Some((self.connection.clone(), path.clone())),
+            Some((self.connection.clone(), path.clone(), permit.clone())),
+        );
+        spawn_invocation_expiry(
+            self.connection.clone(),
+            path.clone(),
+            shared.clone(),
+            permit,
         );
         let connection = self.connection.clone();
         let launcher = self.launcher.clone();
@@ -360,13 +503,10 @@ impl BrokerManager {
         #[zbus(header)] header: Header<'_>,
     ) -> Result<bool, BrokerDbusError> {
         let caller = authenticated_caller(&self.connection, &header).await?;
+        let _permit = self.limits.acquire_validation(caller.sender())?;
         let cancellation = Cancellation::new();
         let owner_changes = owner_change_stream(&self.connection, caller.sender()).await?;
-        let shared = Arc::new(SharedInvocation::new(
-            caller.sender().to_owned(),
-            cancellation.clone(),
-        ));
-        spawn_owner_monitor(owner_changes, shared, None);
+        let owner_monitor = spawn_validation_owner_monitor(owner_changes, cancellation.clone());
         let mut shutdown = self.shutdown.clone();
         let shutdown_cancellation = cancellation.clone();
         tokio::spawn(async move {
@@ -380,6 +520,7 @@ impl BrokerManager {
         let outcome = authorize(&authority, &request, cancellation.subscribe())
             .await
             .map_err(|_| BrokerDbusError::Failed("authorization failed".to_owned()))?;
+        owner_monitor.abort();
         if outcome != AuthorizationOutcome::Authorized {
             return Ok(false);
         }
@@ -548,7 +689,7 @@ async fn owner_change_stream(
 fn spawn_owner_monitor(
     mut changes: zbus::fdo::NameOwnerChangedStream,
     shared: Arc<SharedInvocation>,
-    dynamic_object: Option<(Connection, OwnedObjectPath)>,
+    dynamic_object: Option<(Connection, OwnedObjectPath, Arc<InvocationPermit>)>,
 ) {
     tokio::spawn(async move {
         while let Some(signal) = changes.next().await {
@@ -560,12 +701,41 @@ fn spawn_owner_monitor(
             }
         }
         shared.owner_lost();
-        if let Some((connection, path)) = dynamic_object {
-            let _ = connection
-                .object_server()
-                .remove::<InvocationObject, _>(path)
-                .await;
+        if let Some((connection, path, permit)) = dynamic_object {
+            remove_invocation(&connection, path, &shared).await;
+            drop(permit);
         }
+    });
+}
+
+fn spawn_validation_owner_monitor(
+    mut changes: zbus::fdo::NameOwnerChangedStream,
+    cancellation: Cancellation,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        while let Some(signal) = changes.next().await {
+            let Ok(args) = signal.args() else {
+                break;
+            };
+            if args.new_owner().is_none() {
+                break;
+            }
+        }
+        cancellation.cancel(CancellationReason::OwnerLost);
+    })
+}
+
+fn spawn_invocation_expiry(
+    connection: Connection,
+    path: OwnedObjectPath,
+    shared: Arc<SharedInvocation>,
+    permit: Arc<InvocationPermit>,
+) {
+    tokio::spawn(async move {
+        shared.wait_until_terminal().await;
+        tokio::time::sleep(INVOCATION_EXPIRY).await;
+        remove_invocation(&connection, path, &shared).await;
+        drop(permit);
     });
 }
 
@@ -597,6 +767,7 @@ pub enum BrokerDbusError {
     InvalidRequest(String),
     NotReady(String),
     NotAvailable(String),
+    LimitsExceeded(String),
     Failed(String),
     #[zbus(error)]
     ZBus(zbus::Error),
@@ -717,6 +888,34 @@ mod tests {
             assert!(!fake_transaction(authorization, owner_present, &mut events));
             assert_eq!(events, expected);
         }
+    }
+
+    #[test]
+    fn limits_are_per_owner_global_and_released_by_raii() {
+        let limits = Arc::new(BrokerLimits::default());
+        let mut first_owner = Vec::new();
+        for _ in 0..MAX_OWNER_INVOCATIONS {
+            first_owner.push(limits.acquire_invocation(":1.7").unwrap());
+        }
+        assert!(matches!(
+            limits.acquire_invocation(":1.7"),
+            Err(BrokerDbusError::LimitsExceeded(_))
+        ));
+        assert!(limits.acquire_invocation(":1.8").is_ok());
+
+        drop(first_owner.pop());
+        assert!(limits.acquire_invocation(":1.7").is_ok());
+
+        let mut validations = Vec::new();
+        for _ in 0..MAX_OWNER_VALIDATIONS {
+            validations.push(limits.acquire_validation(":1.9").unwrap());
+        }
+        assert!(matches!(
+            limits.acquire_validation(":1.9"),
+            Err(BrokerDbusError::LimitsExceeded(_))
+        ));
+        drop(validations.pop());
+        assert!(limits.acquire_validation(":1.9").is_ok());
     }
 
     #[test]
