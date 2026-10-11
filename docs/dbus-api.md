@@ -35,6 +35,7 @@ A denial or dismissed challenge returns `false`; transport and authorization-ser
 
 `Status() -> ((ybyiibs) status)` returns immediately.
 `Wait() -> ((ybyiibs) status)` waits for a terminal state and schedules object removal.
+Terminal objects that the owner does not consume or release expire after 60 seconds.
 The status fields are phase, terminal flag, outcome, exit status, signal number, core-dump flag, and a bounded category string.
 
 Phases are `0` authorizing, `1` starting, `2` running, `3` complete, `4` failed, `5` cancelled, and `6` denied.
@@ -49,6 +50,6 @@ The category identifies a failure class and does not contain argv, descriptions,
 
 ## Errors
 
-Broker-defined errors have the prefix `io.github.passcod.sud0.Error` and members `AccessDenied`, `InvalidRequest`, `NotReady`, `NotAvailable`, and `Failed`.
+Broker-defined errors have the prefix `io.github.passcod.sud0.Error` and members `AccessDenied`, `InvalidRequest`, `NotReady`, `NotAvailable`, `LimitsExceeded`, and `Failed`.
 Malformed requests fail before authorization.
 Internal zbus errors can also be returned using their native D-Bus error names.
