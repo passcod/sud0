@@ -18,7 +18,7 @@ The installation consists of three non-setuid Rust binaries:
 
 The broker supplies trusted prompt details because polkit rejects details from ordinary callers to prevent authentication-dialog spoofing.
 The client MUST NOT nominate the polkit subject, caller UID, caller PID, unit name, executable helper, or transient-unit properties.
-The broker MUST derive caller identity from authenticated transport metadata.
+The broker MUST derive caller identity from authenticated transport metadata and submit the authenticated pidfd-backed caller process to polkit so native same-terminal process-family retention can apply.
 
 The dedicated `nz.passcod.sud0.run` action represents permission to run arbitrary root commands through `sud0`.
 Its active-session default is `auth_admin_keep`; inactive and other-session defaults are `auth_admin`.

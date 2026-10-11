@@ -742,9 +742,24 @@ async fn authenticated_caller(
     let uid = credentials
         .unix_user_id()
         .ok_or_else(|| BrokerDbusError::AccessDenied("caller has no Unix UID".to_owned()))?;
+    let pid = credentials
+        .process_id()
+        .ok_or_else(|| BrokerDbusError::AccessDenied("caller has no process ID".to_owned()))?;
+    let pidfd = credentials
+        .process_fd()
+        .ok_or_else(|| {
+            BrokerDbusError::AccessDenied("caller has no process descriptor".to_owned())
+        })?
+        .as_fd()
+        .try_clone_to_owned()
+        .map_err(|_| {
+            BrokerDbusError::Failed("failed to duplicate caller process descriptor".to_owned())
+        })?;
     Ok(CallerIdentity::from_authenticated_sender(
         sender.as_str().to_owned(),
         uid,
+        pid,
+        pidfd,
     ))
 }
 

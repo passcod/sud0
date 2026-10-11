@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::future::Future;
+use std::os::fd::{AsFd, OwnedFd};
 
 use thiserror::Error;
 use tokio::sync::watch;
-use zbus::zvariant::Value;
+use zbus::zvariant::{Fd, Value};
 
 use crate::constants::POLKIT_RUN_ACTION;
 use crate::{FrozenRequest, HumanDescription, WorkingDirectoryIdentity, format_prompt};
@@ -33,15 +34,27 @@ trait PolicyKitAuthority {
 ///
 /// The constructor is crate-private so only the D-Bus boundary can create this value from the
 /// message header and `GetConnectionCredentials` result.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct CallerIdentity {
     sender: String,
     unix_uid: u32,
+    process_id: u32,
+    process_fd: OwnedFd,
 }
 
 impl CallerIdentity {
-    pub(crate) fn from_authenticated_sender(sender: String, unix_uid: u32) -> Self {
-        Self { sender, unix_uid }
+    pub(crate) fn from_authenticated_sender(
+        sender: String,
+        unix_uid: u32,
+        process_id: u32,
+        process_fd: OwnedFd,
+    ) -> Self {
+        Self {
+            sender,
+            unix_uid,
+            process_id,
+            process_fd,
+        }
     }
 
     pub fn sender(&self) -> &str {
@@ -51,13 +64,22 @@ impl CallerIdentity {
     pub const fn unix_uid(&self) -> u32 {
         self.unix_uid
     }
+
+    pub const fn process_id(&self) -> u32 {
+        self.process_id
+    }
+
+    pub fn process_fd(&self) -> &OwnedFd {
+        &self.process_fd
+    }
 }
 
 /// Fully broker-derived authorization request.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct AuthorizationRequest {
-    subject_kind: &'static str,
-    subject_name: String,
+    subject_pid: u32,
+    subject_uid: u32,
+    subject_pidfd: OwnedFd,
     action_id: &'static str,
     message: String,
     flags: u32,
@@ -74,8 +96,13 @@ impl AuthorizationRequest {
         allow_interaction: bool,
     ) -> Result<Self, AuthorizationError> {
         Ok(Self {
-            subject_kind: "system-bus-name",
-            subject_name: caller.sender.clone(),
+            subject_pid: caller.process_id,
+            subject_uid: caller.unix_uid,
+            subject_pidfd: caller
+                .process_fd
+                .as_fd()
+                .try_clone_to_owned()
+                .map_err(AuthorizationError::DuplicatePidfd)?,
             action_id: POLKIT_RUN_ACTION,
             message: format_prompt(request, description, cwd_path, cwd_identity),
             flags: u32::from(allow_interaction) * POLKIT_ALLOW_USER_INTERACTION,
@@ -88,8 +115,13 @@ impl AuthorizationRequest {
         allow_interaction: bool,
     ) -> Result<Self, AuthorizationError> {
         Ok(Self {
-            subject_kind: "system-bus-name",
-            subject_name: caller.sender.clone(),
+            subject_pid: caller.process_id,
+            subject_uid: caller.unix_uid,
+            subject_pidfd: caller
+                .process_fd
+                .as_fd()
+                .try_clone_to_owned()
+                .map_err(AuthorizationError::DuplicatePidfd)?,
             action_id: POLKIT_RUN_ACTION,
             message: "Authentication is required to validate sud0 credentials".to_owned(),
             flags: u32::from(allow_interaction) * POLKIT_ALLOW_USER_INTERACTION,
@@ -97,12 +129,12 @@ impl AuthorizationRequest {
         })
     }
 
-    pub fn subject_kind(&self) -> &'static str {
-        self.subject_kind
+    pub const fn subject_pid(&self) -> u32 {
+        self.subject_pid
     }
 
-    pub fn subject_name(&self) -> &str {
-        &self.subject_name
+    pub const fn subject_uid(&self) -> u32 {
+        self.subject_uid
     }
 
     pub fn action_id(&self) -> &'static str {
@@ -262,12 +294,15 @@ impl Authority for ZbusAuthority {
             .await
             .map_err(AuthorizationError::PolicyKit)?;
         let mut subject_details = HashMap::new();
-        subject_details.insert("name", Value::new(request.subject_name()));
+        subject_details.insert("pid", Value::new(request.subject_pid()));
+        subject_details.insert("start-time", Value::new(0_u64));
+        subject_details.insert("uid", Value::new(request.subject_uid() as i32));
+        subject_details.insert("pidfd", Value::new(Fd::from(request.subject_pidfd.as_fd())));
         let mut details = HashMap::new();
         details.insert("polkit.message", request.message());
         let (authorized, _challenge, result_details) = proxy
             .check_authorization(
-                (request.subject_kind(), subject_details),
+                ("unix-process", subject_details),
                 request.action_id(),
                 details,
                 request.flags(),
@@ -296,6 +331,8 @@ impl Authority for ZbusAuthority {
 
 #[derive(Debug, Error)]
 pub enum AuthorizationError {
+    #[error("failed to duplicate authenticated caller pidfd: {0}")]
+    DuplicatePidfd(std::io::Error),
     #[error("failed to obtain a random authorization identifier: {0}")]
     Random(getrandom::Error),
     #[error("PolicyKit authorization failed")]
@@ -312,7 +349,15 @@ mod tests {
     use crate::{IoMode, RequestOptions};
 
     fn caller() -> CallerIdentity {
-        CallerIdentity::from_authenticated_sender(":1.42".to_owned(), 1000)
+        let pid = std::process::id();
+        let pid = rustix::process::Pid::from_raw(pid as i32).unwrap();
+        let pidfd = rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).unwrap();
+        CallerIdentity::from_authenticated_sender(
+            ":1.42".to_owned(),
+            nix::unistd::Uid::effective().as_raw(),
+            std::process::id(),
+            pidfd,
+        )
     }
 
     fn request() -> FrozenRequest {
@@ -339,8 +384,8 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(check.subject_kind(), "system-bus-name");
-        assert_eq!(check.subject_name(), ":1.42");
+        assert_eq!(check.subject_pid(), std::process::id());
+        assert_eq!(check.subject_uid(), nix::unistd::Uid::effective().as_raw());
         assert_eq!(check.action_id(), "nz.passcod.sud0.run");
         assert_eq!(check.flags(), 1);
         assert_eq!(
@@ -353,8 +398,8 @@ mod tests {
     #[test]
     fn validation_uses_same_action_and_dedicated_prompt() {
         let check = AuthorizationRequest::for_validation(&caller(), false).unwrap();
-        assert_eq!(check.subject_kind(), "system-bus-name");
-        assert_eq!(check.subject_name(), ":1.42");
+        assert_eq!(check.subject_pid(), std::process::id());
+        assert_eq!(check.subject_uid(), nix::unistd::Uid::effective().as_raw());
         assert_eq!(check.action_id(), "nz.passcod.sud0.run");
         assert_eq!(check.flags(), 0);
         assert_eq!(
