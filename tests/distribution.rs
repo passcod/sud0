@@ -1,5 +1,8 @@
 use std::fs;
+use std::os::unix::ffi::OsStrExt;
 
+use clap::Parser;
+use sud0::cli::Cli;
 use sud0::constants::{
     BROKER_BUS_NAME, BROKER_INVOCATION_INTERFACE, BROKER_MANAGER_INTERFACE, BROKER_MANAGER_PATH,
     EXECUTOR_PATH, POLKIT_RUN_ACTION,
@@ -9,6 +12,33 @@ use zbus::zvariant::Type;
 
 fn asset(path: &str) -> String {
     fs::read_to_string(format!("{}/{}", env!("CARGO_MANIFEST_DIR"), path)).unwrap()
+}
+
+#[test]
+fn readme_editor_example_matches_the_cli() {
+    let cli = Cli::try_parse_from([
+        "sud0",
+        "-d",
+        "editing the SSH config",
+        "/usr/bin/nvim",
+        "/etc/ssh/sshd_config",
+    ])
+    .unwrap();
+    assert_eq!(cli.description.as_deref(), Some("editing the SSH config"));
+    assert_eq!(
+        cli.command
+            .iter()
+            .map(|argument| argument.as_bytes())
+            .collect::<Vec<_>>(),
+        [
+            b"/usr/bin/nvim".as_slice(),
+            b"/etc/ssh/sshd_config".as_slice()
+        ]
+    );
+    assert!(
+        asset("README.md")
+            .contains("sud0 -d 'editing the SSH config' /usr/bin/nvim /etc/ssh/sshd_config")
+    );
 }
 
 #[test]

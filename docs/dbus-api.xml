@@ -12,21 +12,24 @@
     </method>
   </interface>
   <node name="invocation">
-    <interface name="io.github.passcod.sud0.Invocation1">
-      <method name="Status">
-        <arg name="status" type="(ybyiibs)" direction="out"/>
-      </method>
-      <method name="Wait">
-        <arg name="status" type="(ybyiibs)" direction="out"/>
-      </method>
-      <method name="Cancel"/>
-      <method name="TakePty">
-        <arg name="pty" type="h" direction="out"/>
-      </method>
-      <method name="SetWindowSize">
-        <arg name="size" type="(qqqq)" direction="in"/>
-      </method>
-      <method name="Release"/>
-    </interface>
+    <!-- Template: runtime children are named with 32 lowercase hex digits. -->
+    <node name="00000000000000000000000000000000">
+      <interface name="io.github.passcod.sud0.Invocation1">
+        <method name="Status">
+          <arg name="status" type="(ybyiibs)" direction="out"/>
+        </method>
+        <method name="Wait">
+          <arg name="status" type="(ybyiibs)" direction="out"/>
+        </method>
+        <method name="Cancel"/>
+        <method name="TakePty">
+          <arg name="pty" type="h" direction="out"/>
+        </method>
+        <method name="SetWindowSize">
+          <arg name="size" type="(qqqq)" direction="in"/>
+        </method>
+        <method name="Release"/>
+      </interface>
+    </node>
   </node>
 </node>

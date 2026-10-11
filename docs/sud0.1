@@ -1,0 +1,189 @@
+.TH SUD0 1 "October 2026" "sud0 0.1.0" "User Commands"
+.SH NAME
+sud0 \- run a command as root after polkit authorization
+.SH SYNOPSIS
+.B sud0
+.RI [ OPTIONS ]
+.RI [ COMMAND " [ARG ...]" ]
+.SH DESCRIPTION
+.B sud0
+sends a bounded command request to a root system-bus broker.
+The broker derives the caller identity from D-Bus credentials, asks polkit to authorize
+.BR io.github.passcod.sud0.run ,
+and starts a separate systemd transient service running a fixed executor.
+No sud0 binary is setuid or setgid.
+.PP
+Options must appear before
+.IR COMMAND .
+After the command begins, every remaining word is an argument even when it resembles an option.
+Use
+.B --
+before a command name that begins with a hyphen.
+With no command,
+.B /bin/bash
+is executed directly; command strings are not interpreted by a shell.
+.SH OPTIONS
+.TP
+.BR \-d ", " \-\-description " " TEXT
+Add a human-readable reason to the authentication prompt.
+It affects presentation only, not policy or execution.
+.TP
+.BR \-D ", " \-\-chdir " " PATH
+Open
+.I PATH
+before authorization and use that directory object for execution.
+Without this option, the invoking current directory is opened and preserved by descriptor.
+.TP
+.BR \-\-setenv " " NAME[=VALUE]
+Set an explicit environment value, or import
+.I NAME
+from the client environment when no equals sign is present.
+May be repeated.
+Missing imports, duplicate names, invalid names, and protected names are errors.
+.TP
+.B \-\-pty
+Allocate a pseudo-terminal.
+Conflicts with
+.BR \-\-pipe .
+.TP
+.B \-\-pipe
+Connect stdin, stdout, and stderr directly without a pseudo-terminal.
+Conflicts with
+.BR \-\-pty .
+.TP
+.BR \-n ", " \-\-non-interactive
+Do not permit polkit to start an interactive authentication challenge.
+.B \-\-no-ask-password
+is a visible alias.
+.TP
+.BR \-v ", " \-\-validate
+Validate or refresh authorization without running a command.
+This option conflicts with command, description, directory, environment, and I/O options.
+.TP
+.BR \-h ", " \-\-help
+Print command help.
+.TP
+.BR \-V ", " \-\-version
+Print the version.
+.SH AUTHENTICATION
+The action authorizes arbitrary root command execution.
+Its default for an active subject is
+.BR auth_admin_keep ;
+polkit normally retains that authorization for about five minutes.
+The retained grant is scoped to the action and equivalent subject rather than command details, so commands can differ during the retained window.
+Inactive and other-session subjects use
+.BR auth_admin .
+.B sud0
+does not implement another authorization cache or configurable timeout.
+.PP
+When interaction is allowed, the client registers
+.B /usr/bin/pkttyagent --fallback
+for its bus identity.
+Authentication finishes before PTY mode changes the local terminal to raw mode.
+.PP
+With a description, the broker's detail has this form:
+.PP
+.nf
+Authentication is required to run a command as root for: TEXT (ESCAPED-ARGV)
+.fi
+.PP
+Without a description, the detail is escaped argv alone.
+The authentication agent may add its own surrounding text.
+.SH WORKING DIRECTORY
+The opened directory descriptor, not displayed pathname text, determines the execution directory.
+This preserves the directory object across a concurrent rename or pathname replacement.
+A relative
+.B \-D
+path is opened relative to the client's current directory.
+.SH INPUT AND OUTPUT
+When stdin, stdout, and stderr are all terminals, the default is PTY mode; otherwise the default is pipe mode.
+Explicit mode options override this choice.
+.PP
+PTY mode forwards terminal bytes, propagates window dimensions, handles suspend and continue, and restores terminal attributes on exit.
+Pipe mode preserves binary streams without allocating a PTY.
+.B sud0
+emits no terminal tint, title, prompt prefix, or command-output log.
+.SH ENVIRONMENT
+The executor supplies exactly these baseline values before adding accepted explicit variables:
+.PP
+.nf
+PATH=/usr/local/sbin:/usr/local/bin:/usr/bin
+HOME=/root
+USER=root
+LOGNAME=root
+SHELL=/bin/bash
+.fi
+.PP
+Baseline and systemd activation names cannot be replaced.
+Security-sensitive loader, allocator, language-runtime, and build-tool control-variable families are also rejected.
+See
+.B SECURITY.md
+in the installed documentation for the complete policy.
+.PP
+A program name containing a slash is executed as given.
+A bare program name is searched in the fixed
+.B PATH
+above.
+There is no variable expansion, globbing, or shell parsing.
+.SH EXIT STATUS
+For a normally exiting command,
+.B sud0
+returns that command's status from 0 through 255.
+For a command terminated by signal
+.IR N ,
+it returns 128+
+.IR N .
+When the client catches SIGINT, SIGTERM, SIGHUP, or SIGQUIT, it requests cancellation and returns 128 plus the caught signal number after cleanup.
+.PP
+.B \-\-validate
+returns 0 when authorized and 1 when not authorized.
+Command denial, cancellation, malformed requests, broker failures, and local setup errors produce a diagnostic on standard error and status 1.
+Command-line syntax errors are reported by the option parser with status 2.
+.SH FILES
+.TP
+.B /usr/bin/sud0
+Unprivileged client.
+.TP
+.B /usr/lib/sud0/sud0-broker
+Root system-bus broker.
+.TP
+.B /usr/lib/sud0/sud0-exec
+Fixed root executor used by transient services.
+.TP
+.B /usr/share/polkit-1/actions/io.github.passcod.sud0.policy
+Polkit action definition.
+.TP
+.B /usr/share/dbus-1/system.d/io.github.passcod.sud0.conf
+System-bus ownership and send policy.
+.TP
+.B /usr/share/dbus-1/system-services/io.github.passcod.sud0.service
+D-Bus activation entry.
+.TP
+.B /usr/lib/systemd/system/sud0-broker.service
+D-Bus service unit; it is activated on demand and has no install section.
+.SH SECURITY
+Arguments and descriptions are disclosed to the authentication agent and may be recorded by verbose local polkit logging.
+Avoid putting secrets there.
+Normal broker diagnostics and unit names do not include them.
+.PP
+Every directory and executable on the fixed root search path must be protected from unprivileged modification.
+The broker service is hardened independently; authorized target commands run in separate transient services and do not inherit broker hardening.
+.SH COMPATIBILITY
+The current implementation requires Linux 5.9 or newer and systemd 257 or newer and targets conventional Arch Linux
+.B /usr
+paths.
+The private D-Bus interface and frozen request format may change during the 0.x series.
+.SH DIAGNOSTICS
+Broker activation failures can be inspected with
+.B systemctl status sud0-broker.service
+and
+.BR journalctl -u sud0-broker.service .
+A missing bare command should be retried with an absolute pathname or installed on the fixed root search path.
+A non-interactive denial requires a retained authorization or a retry without
+.BR \-n .
+.SH SEE ALSO
+.BR systemctl (1),
+.BR journalctl (1),
+.BR pkttyagent (1),
+.BR polkit (8),
+.BR systemd.service (5)
