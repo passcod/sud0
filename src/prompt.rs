@@ -2,7 +2,8 @@ use sha2::{Digest, Sha256};
 
 use crate::WorkingDirectoryIdentity;
 use crate::constants::{
-    MAX_COMMAND_DISPLAY_BYTES, MAX_DESCRIPTION_BYTES, MAX_DESCRIPTION_DISPLAY_BYTES,
+    MAX_COMMAND_DISPLAY_BYTES, MAX_CWD_DISPLAY_BYTES, MAX_DESCRIPTION_BYTES,
+    MAX_DESCRIPTION_DISPLAY_BYTES, MAX_ENVIRONMENT_DISPLAY_BYTES,
 };
 use crate::error::DescriptionError;
 use crate::request::FrozenRequest;
@@ -133,18 +134,16 @@ pub fn format_command(request: &FrozenRequest) -> String {
 pub fn format_prompt(
     request: &FrozenRequest,
     description: Option<&HumanDescription>,
+    cwd_path: &[u8],
     cwd_identity: WorkingDirectoryIdentity,
 ) -> String {
     let command = format_command(request);
-    let cwd = request
-        .working_directory()
-        .map(escape_display_bytes)
-        .unwrap_or_else(|| "<unavailable>".to_owned());
+    let cwd = bounded_byte_display(cwd_path, MAX_CWD_DISPLAY_BYTES, request);
+    let environment = format_environment(request);
     let execution = format!(
-        "{command}; cwd={cwd} [mount={}, inode={}]; env={} variable(s); request-sha256={}",
+        "{command}; cwd={cwd} [mount={}, inode={}]; env={environment}; request-sha256={}",
         cwd_identity.mount_id(),
         cwd_identity.inode(),
-        request.environment().len(),
         request.execution_digest_hex(),
     );
     match description {
@@ -153,9 +152,71 @@ pub fn format_prompt(
     }
 }
 
-fn escape_display_bytes(value: &[u8]) -> String {
-    let mut output = String::with_capacity(escaped_argument_length(value));
-    push_escaped_argument(&mut output, value);
+fn format_environment(request: &FrozenRequest) -> String {
+    if request.environment().is_empty() {
+        return "none".to_owned();
+    }
+
+    let mut full = String::new();
+    for (index, variable) in request.environment().iter().enumerate() {
+        if index != 0 {
+            full.push(' ');
+        }
+        push_escaped_argument(&mut full, variable.name());
+        full.push('=');
+        push_escaped_argument(&mut full, variable.value());
+    }
+    if full.len() <= MAX_ENVIRONMENT_DISPLAY_BYTES {
+        return full;
+    }
+
+    let marker = format!(
+        "... [truncated; request-sha256={}]",
+        request.execution_digest_hex()
+    );
+    let budget = MAX_ENVIRONMENT_DISPLAY_BYTES - marker.len();
+    let mut output = String::with_capacity(MAX_ENVIRONMENT_DISPLAY_BYTES);
+    for variable in request.environment() {
+        let mut assignment = String::new();
+        push_escaped_argument(&mut assignment, variable.name());
+        assignment.push('=');
+        push_escaped_argument(&mut assignment, variable.value());
+        let separator = usize::from(!output.is_empty());
+        if output.len() + separator + assignment.len() > budget {
+            break;
+        }
+        if separator != 0 {
+            output.push(' ');
+        }
+        output.push_str(&assignment);
+    }
+    output.push_str(&marker);
+    output
+}
+
+fn bounded_byte_display(value: &[u8], maximum: usize, request: &FrozenRequest) -> String {
+    let mut full = String::with_capacity(escaped_argument_length(value));
+    push_escaped_argument(&mut full, value);
+    if full.len() <= maximum {
+        return full;
+    }
+
+    let marker = format!(
+        "... [truncated; request-sha256={}]",
+        request.execution_digest_hex()
+    );
+    let budget = maximum - marker.len();
+    let mut output = String::with_capacity(maximum);
+    output.push_str("$'");
+    for &byte in value {
+        let atom_length = escaped_byte_length(byte);
+        if output.len() + atom_length + 1 > budget {
+            break;
+        }
+        push_escaped_byte(&mut output, byte);
+    }
+    output.push('\'');
+    output.push_str(&marker);
     output
 }
 
@@ -312,16 +373,17 @@ mod tests {
         )
         .unwrap();
         let identity = WorkingDirectoryIdentity::new_for_test(7, 11);
-        let prompt = format_prompt(&request, None, identity);
+        let prompt = format_prompt(&request, None, b"/actual", identity);
         assert!(prompt.starts_with(PROMPT_PREFIX));
-        assert!(prompt.contains("$'id'; cwd=$'/tmp' [mount=7, inode=11]; env=1 variable(s)"));
+        assert!(prompt.contains("$'id'; cwd=$'/actual' [mount=7, inode=11]; env=$'LANG'=$'C'"));
+        assert!(!prompt.contains("cwd=$'/tmp'"));
         assert!(prompt.ends_with(&format!(
             "request-sha256={}",
             request.execution_digest_hex()
         )));
 
         let description = HumanDescription::new("inspect account").unwrap();
-        let described = format_prompt(&request, Some(&description), identity);
+        let described = format_prompt(&request, Some(&description), b"/actual", identity);
         assert!(described.starts_with(&format!("{PROMPT_PREFIX}inspect account (")));
         assert!(described.ends_with(')'));
     }
@@ -372,11 +434,13 @@ mod tests {
             format_prompt(
                 &request,
                 Some(&first),
+                b"/actual",
                 WorkingDirectoryIdentity::new_for_test(7, 11),
             ),
             format_prompt(
                 &request,
                 Some(&second),
+                b"/actual",
                 WorkingDirectoryIdentity::new_for_test(7, 11),
             )
         );

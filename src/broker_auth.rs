@@ -69,6 +69,7 @@ impl AuthorizationRequest {
         caller: &CallerIdentity,
         request: &FrozenRequest,
         description: Option<&HumanDescription>,
+        cwd_path: &[u8],
         cwd_identity: WorkingDirectoryIdentity,
         allow_interaction: bool,
     ) -> Result<Self, AuthorizationError> {
@@ -76,7 +77,7 @@ impl AuthorizationRequest {
             subject_kind: "system-bus-name",
             subject_name: caller.sender.clone(),
             action_id: POLKIT_RUN_ACTION,
-            message: format_prompt(request, description, cwd_identity),
+            message: format_prompt(request, description, cwd_path, cwd_identity),
             flags: u32::from(allow_interaction) * POLKIT_ALLOW_USER_INTERACTION,
             cancellation_id: random_identifier("sud0-auth")?,
         })
@@ -332,6 +333,7 @@ mod tests {
             &caller(),
             &request(),
             Some(&description),
+            b"/actual",
             cwd_identity,
             true,
         )
@@ -343,7 +345,7 @@ mod tests {
         assert_eq!(check.flags(), 1);
         assert_eq!(
             check.message(),
-            format_prompt(&request(), Some(&description), cwd_identity)
+            format_prompt(&request(), Some(&description), b"/actual", cwd_identity)
         );
         assert!(!check.cancellation_id().is_empty());
     }

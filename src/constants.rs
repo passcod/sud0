@@ -73,3 +73,7 @@ pub const MAX_DESCRIPTION_BYTES: usize = 512;
 pub const MAX_DESCRIPTION_DISPLAY_BYTES: usize = 1024;
 /// Maximum rendered byte length of the argv portion of a prompt.
 pub const MAX_COMMAND_DISPLAY_BYTES: usize = 1024;
+/// Maximum rendered byte length of the broker-derived working-directory path.
+pub const MAX_CWD_DISPLAY_BYTES: usize = 512;
+/// Maximum rendered byte length of the explicit environment summary.
+pub const MAX_ENVIRONMENT_DISPLAY_BYTES: usize = 512;

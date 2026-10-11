@@ -84,10 +84,11 @@ Authentication finishes before PTY mode changes the local terminal to raw mode.
 With a description, the broker's detail has this form:
 .PP
 .nf
-Authentication is required to run a command as root for: TEXT (ESCAPED-ARGV)
+Authentication is required to run a command as root for: TEXT (ESCAPED-ARGV; cwd=PATH [mount=N, inode=N]; env=ASSIGNMENTS; request-sha256=DIGEST)
 .fi
 .PP
-Without a description, the detail is escaped argv alone.
+Without a description, the same execution summary appears without TEXT.
+The broker derives PATH and its mount/inode identity from the received directory descriptor, shows bounded explicit environment assignments, and always includes the complete request digest.
 The authentication agent may add its own surrounding text.
 .SH WORKING DIRECTORY
 The opened directory descriptor, not displayed pathname text, determines the execution directory.

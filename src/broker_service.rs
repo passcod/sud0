@@ -575,10 +575,21 @@ async fn run_pipeline(
             return;
         }
     };
+    let cwd_path = match prepared.cwd().display_path() {
+        Ok(path) => path,
+        Err(_) => {
+            shared.update(InvocationStatusWire::terminal_phase(
+                PHASE_FAILED,
+                "authorization-setup",
+            ));
+            return;
+        }
+    };
     let authorization = match AuthorizationRequest::for_run(
         &caller,
         prepared.request(),
         prepared.description(),
+        &cwd_path,
         cwd_identity,
         prepared.allow_interaction(),
     ) {

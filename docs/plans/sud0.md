@@ -35,16 +35,16 @@ The broker freezes every accepted request before authorization.
 The polkit prompt and executor payload MUST be derived from that same immutable request.
 The broker MUST NOT parse prompt text or reread mutable client request data after authorization.
 
-The command shown to the user is a deterministic shell-escaped representation of argv.
+The execution summary shown to the user includes a deterministic shell-escaped representation of argv, a broker-derived path and mount/inode identity for the received working-directory descriptor, bounded explicit environment assignments, and the complete request digest.
 The display formatter MUST render controls, escape bytes, newlines, bidi controls, invalid UTF-8, and markup-significant input without embedding unsafe literal characters.
 Long displays MUST be truncated at defined boundaries and identify the complete request with a digest.
 Prompt text is descriptive; execution always uses structured argv without a shell.
 
 The client accepts `-d/--description TEXT` for human context.
-A described challenge has the form `Authentication is required to run a command as root for: <description> (<escaped argv>)`.
+A described challenge prefixes the execution summary with `Authentication is required to run a command as root for: <description>`.
 The broker MUST sanitize and bound the UTF-8 description independently from argv.
 The description MUST NOT influence policy, request identity, execution, transient-unit metadata, or logs.
-Without a description, the challenged prompt shows the escaped argv alone.
+Without a description, the challenged prompt shows the same execution summary without the human context.
 
 Command-line arguments and descriptions can contain secrets.
 The authentication agent receives the displayed text, and a locally configured verbose polkit daemon may record request details.

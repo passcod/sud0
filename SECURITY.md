@@ -37,7 +37,7 @@ Its defaults require administrator authentication for any or inactive sessions a
 Polkit's native retained authorization is normally about five minutes; sud0 has no separate timer or cache.
 Retention is keyed by action and equivalent subject, not by command details, so another command can reuse a retained grant.
 
-The broker gives polkit a sanitized rendering of argv and the optional description.
+The broker gives polkit a sanitized execution summary containing argv, a cwd path and mount/inode identity derived from the received directory descriptor, bounded explicit environment assignments, the complete request digest, and the optional description.
 Those values may contain secrets and are disclosed to the authentication agent; verbose local polkit logging may also record them.
 Prompt text is presentation only and is never parsed for execution.
 
@@ -58,5 +58,6 @@ This denylist reduces privileged-runtime injection but does not make arbitrary e
 Normal broker diagnostics and transient unit names/descriptions contain neither argv nor descriptions.
 Random identifiers are used for authorization and transient-unit correlation.
 Requests cap aggregate data, element counts, individual argument and environment sizes, cwd text, and prompt rendering before root execution.
+The broker also applies per-caller and global limits to concurrent validations and outstanding invocations, and expires unclaimed terminal invocation objects after 60 seconds.
 These bounds limit broker allocations but do not constrain the CPU, memory, filesystem, or device use of an authorized target command.
 Target commands run in separate transient services and do not inherit the broker service's hardening directives.
