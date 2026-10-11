@@ -6,7 +6,7 @@ use tokio::sync::watch;
 use zbus::zvariant::Value;
 
 use crate::constants::POLKIT_RUN_ACTION;
-use crate::{FrozenRequest, HumanDescription, format_prompt};
+use crate::{FrozenRequest, HumanDescription, WorkingDirectoryIdentity, format_prompt};
 
 const POLKIT_ALLOW_USER_INTERACTION: u32 = 1;
 
@@ -69,13 +69,14 @@ impl AuthorizationRequest {
         caller: &CallerIdentity,
         request: &FrozenRequest,
         description: Option<&HumanDescription>,
+        cwd_identity: WorkingDirectoryIdentity,
         allow_interaction: bool,
     ) -> Result<Self, AuthorizationError> {
         Ok(Self {
             subject_kind: "system-bus-name",
             subject_name: caller.sender.clone(),
             action_id: POLKIT_RUN_ACTION,
-            message: format_prompt(request, description),
+            message: format_prompt(request, description, cwd_identity),
             flags: u32::from(allow_interaction) * POLKIT_ALLOW_USER_INTERACTION,
             cancellation_id: random_identifier("sud0-auth")?,
         })
@@ -326,8 +327,15 @@ mod tests {
     #[test]
     fn run_request_has_exact_broker_derived_policy_fields() {
         let description = HumanDescription::new("disk maintenance").unwrap();
-        let check =
-            AuthorizationRequest::for_run(&caller(), &request(), Some(&description), true).unwrap();
+        let cwd_identity = WorkingDirectoryIdentity::new_for_test(7, 11);
+        let check = AuthorizationRequest::for_run(
+            &caller(),
+            &request(),
+            Some(&description),
+            cwd_identity,
+            true,
+        )
+        .unwrap();
 
         assert_eq!(check.subject_kind(), "system-bus-name");
         assert_eq!(check.subject_name(), ":1.42");
@@ -335,7 +343,7 @@ mod tests {
         assert_eq!(check.flags(), 1);
         assert_eq!(
             check.message(),
-            format_prompt(&request(), Some(&description))
+            format_prompt(&request(), Some(&description), cwd_identity)
         );
         assert!(!check.cancellation_id().is_empty());
     }

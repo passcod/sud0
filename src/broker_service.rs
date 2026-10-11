@@ -544,10 +544,21 @@ async fn run_pipeline(
         }
     });
 
+    let cwd_identity = match prepared.cwd().identity() {
+        Ok(identity) => identity,
+        Err(_) => {
+            shared.update(InvocationStatusWire::terminal_phase(
+                PHASE_FAILED,
+                "authorization-setup",
+            ));
+            return;
+        }
+    };
     let authorization = match AuthorizationRequest::for_run(
         &caller,
         prepared.request(),
         prepared.description(),
+        cwd_identity,
         prepared.allow_interaction(),
     ) {
         Ok(request) => request,

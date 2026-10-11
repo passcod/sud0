@@ -30,7 +30,7 @@ pub use broker_systemd::{
     map_service_outcome, set_pty_window_size,
 };
 pub use broker_wire::{PrepareError, PreparedIo, PreparedRequest, RunWire, StdioWire, WindowSize};
-pub use cwd::{WorkingDirectoryError, WorkingDirectoryFd};
+pub use cwd::{WorkingDirectoryError, WorkingDirectoryFd, WorkingDirectoryIdentity};
 pub use error::{DescriptionError, ProtocolError, RequestError};
 pub use prompt::{HumanDescription, format_command, format_prompt};
 pub use request::{EnvironmentVariable, FrozenRequest, IoMode, RequestOptions};

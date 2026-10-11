@@ -1,5 +1,6 @@
 use std::ffi::CStr;
-use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
+use std::mem::MaybeUninit;
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
 
 use nix::fcntl::{OFlag, open};
 use nix::sys::stat::{Mode, SFlag, fstat};
@@ -31,9 +32,58 @@ impl WorkingDirectoryFd {
         self.fd.as_fd()
     }
 
+    /// Returns kernel-derived identity for this exact directory object.
+    pub fn identity(&self) -> Result<WorkingDirectoryIdentity, WorkingDirectoryError> {
+        let mut metadata = MaybeUninit::<libc::statx>::zeroed();
+        // SAFETY: `metadata` points to writable storage for `statx`; an empty pathname plus
+        // `AT_EMPTY_PATH` asks the kernel to inspect the valid borrowed directory descriptor.
+        let result = unsafe {
+            libc::statx(
+                self.fd.as_raw_fd(),
+                c"".as_ptr(),
+                libc::AT_EMPTY_PATH | libc::AT_NO_AUTOMOUNT,
+                libc::STATX_TYPE | libc::STATX_INO | libc::STATX_MNT_ID,
+                metadata.as_mut_ptr(),
+            )
+        };
+        if result == -1 {
+            return Err(WorkingDirectoryError::Identity(
+                std::io::Error::last_os_error(),
+            ));
+        }
+        // SAFETY: successful `statx` initialized the output structure.
+        let metadata = unsafe { metadata.assume_init() };
+        Ok(WorkingDirectoryIdentity {
+            mount_id: metadata.stx_mnt_id,
+            inode: metadata.stx_ino,
+        })
+    }
+
     /// Transfers ownership while preserving the verified directory-object identity.
     pub fn into_owned_fd(self) -> OwnedFd {
         self.fd
+    }
+}
+
+/// Kernel-derived identity for an opened working directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorkingDirectoryIdentity {
+    mount_id: u64,
+    inode: u64,
+}
+
+impl WorkingDirectoryIdentity {
+    #[cfg(test)]
+    pub(crate) const fn new_for_test(mount_id: u64, inode: u64) -> Self {
+        Self { mount_id, inode }
+    }
+
+    pub const fn mount_id(self) -> u64 {
+        self.mount_id
+    }
+
+    pub const fn inode(self) -> u64 {
+        self.inode
     }
 }
 
@@ -62,6 +112,8 @@ pub enum WorkingDirectoryError {
     Open(nix::errno::Errno),
     #[error("failed to inspect working-directory descriptor: {0}")]
     Stat(nix::errno::Errno),
+    #[error("failed to identify working-directory descriptor: {0}")]
+    Identity(std::io::Error),
     #[error("working-directory descriptor does not refer to a directory")]
     NotDirectory,
 }
@@ -97,6 +149,15 @@ mod tests {
 
         let opened = WorkingDirectoryFd::open(&path).unwrap();
         assert!(fstat(opened.as_fd()).unwrap().st_mode & libc::S_IFMT == libc::S_IFDIR);
+    }
+
+    #[test]
+    fn identity_is_stable_for_the_same_directory_object() {
+        let directory =
+            WorkingDirectoryFd::try_from(OwnedFd::from(File::open("/").unwrap())).unwrap();
+        let identity = directory.identity().unwrap();
+        assert_ne!(identity.inode(), 0);
+        assert_eq!(directory.identity().unwrap(), identity);
     }
 
     #[test]

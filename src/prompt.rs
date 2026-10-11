@@ -1,5 +1,6 @@
 use sha2::{Digest, Sha256};
 
+use crate::WorkingDirectoryIdentity;
 use crate::constants::{
     MAX_COMMAND_DISPLAY_BYTES, MAX_DESCRIPTION_BYTES, MAX_DESCRIPTION_DISPLAY_BYTES,
 };
@@ -128,13 +129,34 @@ pub fn format_command(request: &FrozenRequest) -> String {
     display
 }
 
-/// Composes the challenged text from presentation context and the immutable execution request.
-pub fn format_prompt(request: &FrozenRequest, description: Option<&HumanDescription>) -> String {
+/// Composes challenged text from presentation context and all execution-affecting request data.
+pub fn format_prompt(
+    request: &FrozenRequest,
+    description: Option<&HumanDescription>,
+    cwd_identity: WorkingDirectoryIdentity,
+) -> String {
     let command = format_command(request);
+    let cwd = request
+        .working_directory()
+        .map(escape_display_bytes)
+        .unwrap_or_else(|| "<unavailable>".to_owned());
+    let execution = format!(
+        "{command}; cwd={cwd} [mount={}, inode={}]; env={} variable(s); request-sha256={}",
+        cwd_identity.mount_id(),
+        cwd_identity.inode(),
+        request.environment().len(),
+        request.execution_digest_hex(),
+    );
     match description {
-        Some(description) => format!("{PROMPT_PREFIX}{} ({command})", description.display()),
-        None => command,
+        Some(description) => format!("{PROMPT_PREFIX}{} ({execution})", description.display()),
+        None => format!("{PROMPT_PREFIX}{execution}"),
     }
+}
+
+fn escape_display_bytes(value: &[u8]) -> String {
+    let mut output = String::with_capacity(escaped_argument_length(value));
+    push_escaped_argument(&mut output, value);
+    output
 }
 
 fn escaped_argument_length(argument: &[u8]) -> usize {
@@ -281,14 +303,27 @@ mod tests {
     }
 
     #[test]
-    fn described_and_undescribed_prompts_have_distinct_composition() {
-        let request = request(vec![b"id".to_vec()]);
-        assert_eq!(format_prompt(&request, None), "$'id'");
+    fn prompts_bind_command_cwd_environment_and_directory_identity() {
+        let request = FrozenRequest::new(
+            vec![b"id".to_vec()],
+            Some(b"/tmp".to_vec()),
+            vec![(b"LANG".to_vec(), b"C".to_vec())],
+            RequestOptions::for_io_mode(IoMode::Pipe),
+        )
+        .unwrap();
+        let identity = WorkingDirectoryIdentity::new_for_test(7, 11);
+        let prompt = format_prompt(&request, None, identity);
+        assert!(prompt.starts_with(PROMPT_PREFIX));
+        assert!(prompt.contains("$'id'; cwd=$'/tmp' [mount=7, inode=11]; env=1 variable(s)"));
+        assert!(prompt.ends_with(&format!(
+            "request-sha256={}",
+            request.execution_digest_hex()
+        )));
+
         let description = HumanDescription::new("inspect account").unwrap();
-        assert_eq!(
-            format_prompt(&request, Some(&description)),
-            "Authentication is required to run a command as root for: inspect account ($'id')"
-        );
+        let described = format_prompt(&request, Some(&description), identity);
+        assert!(described.starts_with(&format!("{PROMPT_PREFIX}inspect account (")));
+        assert!(described.ends_with(')'));
     }
 
     #[test]
@@ -334,8 +369,16 @@ mod tests {
         let second = HumanDescription::new("unrelated reason").unwrap();
 
         assert_ne!(
-            format_prompt(&request, Some(&first)),
-            format_prompt(&request, Some(&second))
+            format_prompt(
+                &request,
+                Some(&first),
+                WorkingDirectoryIdentity::new_for_test(7, 11),
+            ),
+            format_prompt(
+                &request,
+                Some(&second),
+                WorkingDirectoryIdentity::new_for_test(7, 11),
+            )
         );
         assert_eq!(request.encode().unwrap(), encoded);
         assert_eq!(*request.execution_digest(), digest);
