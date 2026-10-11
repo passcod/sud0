@@ -22,6 +22,8 @@ pub enum AuthenticationAgentError {
     Pipe(nix::errno::Errno),
     #[error("failed to monitor authentication-agent notification pipe: {0}")]
     Monitor(io::Error),
+    #[error("no controlling terminal is available for {PKTTYAGENT_PATH}")]
+    NoControllingTerminal,
     #[error("failed to start {PKTTYAGENT_PATH}: {0}")]
     Spawn(io::Error),
     #[error("authentication agent exited before registering ({0})")]
@@ -38,6 +40,23 @@ impl AuthenticationAgent {
     /// sessions. Callers may retain a startup error while trying broker authorization: a desktop
     /// agent can still satisfy it, but the startup error gives a clear cause if authorization fails.
     pub async fn start() -> Result<Self, AuthenticationAgentError> {
+        let terminal = std::fs::File::options()
+            .read(true)
+            .write(true)
+            .open("/dev/tty")
+            .map_err(|error| {
+                if error.raw_os_error() == Some(libc::ENXIO) {
+                    AuthenticationAgentError::NoControllingTerminal
+                } else {
+                    AuthenticationAgentError::Spawn(error)
+                }
+            })?;
+        let terminal_out = terminal
+            .try_clone()
+            .map_err(AuthenticationAgentError::Spawn)?;
+        let terminal_err = terminal
+            .try_clone()
+            .map_err(AuthenticationAgentError::Spawn)?;
         let (read_end, write_end) =
             pipe2(OFlag::O_CLOEXEC).map_err(AuthenticationAgentError::Pipe)?;
         let notify_fd = write_end.as_raw_fd();
@@ -46,9 +65,9 @@ impl AuthenticationAgent {
         command
             .arg("--fallback")
             .arg(format!("--notify-fd={notify_fd}"))
-            .stdin(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit());
+            .stdin(Stdio::from(terminal))
+            .stdout(Stdio::from(terminal_out))
+            .stderr(Stdio::from(terminal_err));
 
         // SAFETY: The closure runs after fork and before exec. `notify_fd` is copied as an integer
         // before spawning and names the still-owned `write_end`; the parent cannot close it until
