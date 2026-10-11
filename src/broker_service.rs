@@ -132,6 +132,7 @@ struct SharedInvocation {
     state: Mutex<InvocationState>,
     changed: Notify,
     terminal: Notify,
+    owner_monitor: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl SharedInvocation {
@@ -146,6 +147,7 @@ impl SharedInvocation {
             }),
             changed: Notify::new(),
             terminal: Notify::new(),
+            owner_monitor: Mutex::new(None),
         }
     }
 
@@ -187,6 +189,16 @@ impl SharedInvocation {
                 return;
             }
             notified.await;
+        }
+    }
+
+    fn install_owner_monitor(&self, monitor: tokio::task::JoinHandle<()>) {
+        *self.owner_monitor.lock().unwrap() = Some(monitor);
+    }
+
+    fn stop_owner_monitor(&self) {
+        if let Some(monitor) = self.owner_monitor.lock().unwrap().take() {
+            monitor.abort();
         }
     }
 
@@ -254,6 +266,7 @@ async fn remove_invocation(
         .object_server()
         .remove::<InvocationObject, _>(path)
         .await;
+    shared.stop_owner_monitor();
     shared.cancellation.cancel(CancellationReason::Caller);
     let mut state = shared.state.lock().unwrap();
     state.pty_master = None;
@@ -487,11 +500,13 @@ impl BrokerManager {
             .await
             .map_err(BrokerDbusError::ZBus)?;
 
-        spawn_owner_monitor(
+        let owner_monitor = spawn_owner_monitor(
             owner_changes,
             shared.clone(),
-            Some((self.connection.clone(), path.clone(), permit.clone())),
+            self.connection.clone(),
+            path.clone(),
         );
+        shared.install_owner_monitor(owner_monitor);
         spawn_invocation_expiry(
             self.connection.clone(),
             path.clone(),
@@ -732,8 +747,9 @@ async fn owner_change_stream(
 fn spawn_owner_monitor(
     mut changes: zbus::fdo::NameOwnerChangedStream,
     shared: Arc<SharedInvocation>,
-    dynamic_object: Option<(Connection, OwnedObjectPath, Arc<InvocationPermit>)>,
-) {
+    connection: Connection,
+    path: OwnedObjectPath,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         while let Some(signal) = changes.next().await {
             let Ok(args) = signal.args() else {
@@ -744,11 +760,8 @@ fn spawn_owner_monitor(
             }
         }
         shared.owner_lost();
-        if let Some((connection, path, permit)) = dynamic_object {
-            remove_invocation(&connection, path, &shared).await;
-            drop(permit);
-        }
-    });
+        remove_invocation(&connection, path, &shared).await;
+    })
 }
 
 fn spawn_validation_owner_monitor(
