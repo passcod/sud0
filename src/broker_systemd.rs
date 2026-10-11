@@ -459,11 +459,11 @@ async fn track_completion_inner(
 pub fn map_service_outcome(result: &str, code: i32, status: i32) -> CommandOutcome {
     match (result, code) {
         ("success" | "exit-code", libc::CLD_EXITED) => CommandOutcome::Exited(status),
-        ("signal", libc::CLD_KILLED) => CommandOutcome::Signaled {
+        ("success" | "signal", libc::CLD_KILLED) => CommandOutcome::Signaled {
             signal: status,
             core_dumped: false,
         },
-        ("core-dump", libc::CLD_DUMPED) => CommandOutcome::Signaled {
+        ("success" | "core-dump", libc::CLD_DUMPED) => CommandOutcome::Signaled {
             signal: status,
             core_dumped: true,
         },
@@ -593,14 +593,14 @@ mod tests {
             CommandOutcome::Exited(23)
         );
         assert_eq!(
-            map_service_outcome("signal", libc::CLD_KILLED, libc::SIGTERM),
+            map_service_outcome("success", libc::CLD_KILLED, libc::SIGTERM),
             CommandOutcome::Signaled {
                 signal: libc::SIGTERM,
                 core_dumped: false
             }
         );
         assert_eq!(
-            map_service_outcome("core-dump", libc::CLD_DUMPED, libc::SIGSEGV),
+            map_service_outcome("success", libc::CLD_DUMPED, libc::SIGSEGV),
             CommandOutcome::Signaled {
                 signal: libc::SIGSEGV,
                 core_dumped: true
