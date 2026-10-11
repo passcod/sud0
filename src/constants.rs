@@ -34,6 +34,8 @@ pub const BROKER_INVOCATION_INTERFACE: &str = "nz.passcod.sud0.Invocation1";
 pub const POLKIT_RUN_ACTION: &str = "nz.passcod.sud0.run";
 /// Fixed non-sensitive description for transient command services.
 pub const TRANSIENT_UNIT_DESCRIPTION: &str = "sud0 privileged command";
+/// Root-owned prompt template loaded once when the broker starts.
+pub const PROMPT_TEMPLATE_PATH: &str = "/etc/sud0/prompt.template";
 
 /// Environment names supplied by the executor rather than by a request.
 pub const BASELINE_ENVIRONMENT_NAMES: &[&[u8]] = &[b"PATH", b"HOME", b"USER", b"LOGNAME", b"SHELL"];
@@ -77,3 +79,7 @@ pub const MAX_COMMAND_DISPLAY_BYTES: usize = 1024;
 pub const MAX_CWD_DISPLAY_BYTES: usize = 512;
 /// Maximum rendered byte length of the explicit environment summary.
 pub const MAX_ENVIRONMENT_DISPLAY_BYTES: usize = 512;
+/// Maximum UTF-8 byte length of the root-owned prompt template.
+pub const MAX_PROMPT_TEMPLATE_BYTES: usize = 4096;
+/// Maximum rendered prompt size after placeholder expansion.
+pub const MAX_PROMPT_BYTES: usize = 8192;

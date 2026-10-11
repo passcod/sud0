@@ -38,6 +38,7 @@ install: ensure-prefix
 	$(INSTALL) -Dm755 target/release/sud0 "$(BINDIR)/sud0"
 	$(INSTALL) -Dm755 target/release/sud0-broker "$(LIBEXECDIR)/sud0-broker"
 	$(INSTALL) -Dm755 target/release/sud0-exec "$(LIBEXECDIR)/sud0-exec"
+	$(INSTALL) -Dm644 dist/prompt.template "$(DESTDIR)/etc/sud0/prompt.template"
 	$(INSTALL) -Dm644 dist/polkit/nz.passcod.sud0.policy "$(DATADIR)/polkit-1/actions/nz.passcod.sud0.policy"
 	$(INSTALL) -Dm644 dist/dbus-1/system.d/nz.passcod.sud0.conf "$(DATADIR)/dbus-1/system.d/nz.passcod.sud0.conf"
 	$(INSTALL) -Dm644 dist/dbus-1/system-services/nz.passcod.sud0.service "$(DATADIR)/dbus-1/system-services/nz.passcod.sud0.service"
@@ -53,6 +54,7 @@ install: ensure-prefix
 uninstall: ensure-prefix
 	rm -f -- "$(BINDIR)/sud0"
 	rm -f -- "$(LIBEXECDIR)/sud0-broker" "$(LIBEXECDIR)/sud0-exec"
+	rm -f -- "$(DESTDIR)/etc/sud0/prompt.template"
 	rm -f -- "$(DATADIR)/polkit-1/actions/nz.passcod.sud0.policy"
 	rm -f -- "$(DATADIR)/dbus-1/system.d/nz.passcod.sud0.conf"
 	rm -f -- "$(DATADIR)/dbus-1/system-services/nz.passcod.sud0.service"
@@ -61,4 +63,4 @@ uninstall: ensure-prefix
 	rm -f -- "$(DATADIR)/licenses/sud0/LICENSE-MIT" "$(DATADIR)/licenses/sud0/LICENSE-APACHE"
 	rm -f -- "$(DATADIR)/doc/sud0/README.md" "$(DATADIR)/doc/sud0/SECURITY.md"
 	rm -f -- "$(DATADIR)/doc/sud0/dbus-api.md" "$(DATADIR)/doc/sud0/dbus-api.xml"
-	rmdir --ignore-fail-on-non-empty -- $(LIBEXECDIR) "$(DATADIR)/licenses/sud0" "$(DATADIR)/doc/sud0" 2>/dev/null || true
+	rmdir --ignore-fail-on-non-empty -- "$(DESTDIR)/etc/sud0" $(LIBEXECDIR) "$(DATADIR)/licenses/sud0" "$(DATADIR)/doc/sud0" 2>/dev/null || true

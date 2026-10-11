@@ -1,15 +1,27 @@
 use sha2::{Digest, Sha256};
+use thiserror::Error;
 
 use crate::WorkingDirectoryIdentity;
 use crate::constants::{
     MAX_COMMAND_DISPLAY_BYTES, MAX_CWD_DISPLAY_BYTES, MAX_DESCRIPTION_BYTES,
-    MAX_DESCRIPTION_DISPLAY_BYTES, MAX_ENVIRONMENT_DISPLAY_BYTES,
+    MAX_DESCRIPTION_DISPLAY_BYTES, MAX_ENVIRONMENT_DISPLAY_BYTES, MAX_PROMPT_BYTES,
+    MAX_PROMPT_TEMPLATE_BYTES,
 };
 use crate::error::DescriptionError;
 use crate::request::FrozenRequest;
 
 const DESCRIPTION_DIGEST_DOMAIN: &[u8] = b"sud0 human description digest\0";
-const PROMPT_PREFIX: &str = "Authentication is required to run a command as root for: ";
+const ALLOWED_PLACEHOLDERS: &[&str] = &[
+    "description",
+    "description_line",
+    "command",
+    "cwd",
+    "cwd_identity",
+    "environment",
+    "environment_line",
+    "request_digest",
+    "digest_line",
+];
 
 /// Validated presentation-only context supplied by a human caller.
 ///
@@ -70,6 +82,10 @@ impl HumanDescription {
 /// rendering exceeds its bound, the prefix ends at a byte-escape or argument boundary, closes any
 /// open quote, and carries the complete execution digest.
 pub fn format_command(request: &FrozenRequest) -> String {
+    format_command_with_state(request).0
+}
+
+fn format_command_with_state(request: &FrozenRequest) -> (String, bool) {
     let full_length = request
         .argv()
         .iter()
@@ -84,7 +100,7 @@ pub fn format_command(request: &FrozenRequest) -> String {
             }
             push_escaped_argument(&mut display, argument);
         }
-        return display;
+        return (display, false);
     }
 
     let marker = format!(
@@ -127,29 +143,125 @@ pub fn format_command(request: &FrozenRequest) -> String {
         }
     }
     display.push_str(&marker);
-    display
+    (display, true)
 }
 
-/// Composes challenged text from presentation context and all execution-affecting request data.
+/// A validated root-owned format for authentication messages.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PromptTemplate {
+    text: String,
+}
+
+impl PromptTemplate {
+    pub fn parse(text: String) -> Result<Self, PromptTemplateError> {
+        if text.len() > MAX_PROMPT_TEMPLATE_BYTES {
+            return Err(PromptTemplateError::TooLong {
+                actual: text.len(),
+                maximum: MAX_PROMPT_TEMPLATE_BYTES,
+            });
+        }
+        let mut rest = text.as_str();
+        while let Some(open) = rest.find('{') {
+            let after_open = &rest[open + 1..];
+            let close = after_open
+                .find('}')
+                .ok_or(PromptTemplateError::UnclosedPlaceholder)?;
+            let name = &after_open[..close];
+            if !ALLOWED_PLACEHOLDERS.contains(&name) {
+                return Err(PromptTemplateError::UnknownPlaceholder(name.to_owned()));
+            }
+            rest = &after_open[close + 1..];
+        }
+        if rest.contains('}') {
+            return Err(PromptTemplateError::UnexpectedClose);
+        }
+        Ok(Self { text })
+    }
+
+    pub fn render(
+        &self,
+        request: &FrozenRequest,
+        description: Option<&HumanDescription>,
+        cwd_path: &[u8],
+        cwd_identity: WorkingDirectoryIdentity,
+    ) -> Result<String, PromptTemplateError> {
+        let (command, command_truncated) = format_command_with_state(request);
+        let (cwd, cwd_truncated) = bounded_byte_display(cwd_path, MAX_CWD_DISPLAY_BYTES, request);
+        let description = description
+            .map(HumanDescription::display)
+            .unwrap_or_default();
+        let environment = format_environment(request);
+        let environment_count = request.environment().len();
+        let request_digest = request.execution_digest_hex();
+        let cwd_identity = format!(
+            "mount={}, inode={}",
+            cwd_identity.mount_id(),
+            cwd_identity.inode()
+        );
+        let description_line = if description.is_empty() {
+            String::new()
+        } else {
+            format!("\n{description}")
+        };
+        let environment_line = if environment_count == 0 {
+            String::new()
+        } else {
+            format!("\nwith {environment_count} environment override(s)")
+        };
+        let digest_line = if command_truncated || cwd_truncated {
+            format!("\nrequest sha256: {request_digest}")
+        } else {
+            String::new()
+        };
+        let values = [
+            ("description", description.as_str()),
+            ("description_line", description_line.as_str()),
+            ("command", command.as_str()),
+            ("cwd", cwd.as_str()),
+            ("cwd_identity", cwd_identity.as_str()),
+            ("environment", environment.as_str()),
+            ("environment_line", environment_line.as_str()),
+            ("request_digest", request_digest.as_str()),
+            ("digest_line", digest_line.as_str()),
+        ];
+
+        let mut rendered = self.text.clone();
+        for (name, value) in values {
+            rendered = rendered.replace(&format!("{{{name}}}"), value);
+        }
+        if rendered.len() > MAX_PROMPT_BYTES {
+            return Err(PromptTemplateError::RenderedTooLong {
+                actual: rendered.len(),
+                maximum: MAX_PROMPT_BYTES,
+            });
+        }
+        Ok(rendered.trim_end().to_owned())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum PromptTemplateError {
+    #[error("prompt template has {actual} bytes; the maximum is {maximum}")]
+    TooLong { actual: usize, maximum: usize },
+    #[error("prompt template has an unclosed placeholder")]
+    UnclosedPlaceholder,
+    #[error("prompt template has an unexpected closing brace")]
+    UnexpectedClose,
+    #[error("prompt template uses unknown placeholder {0:?}")]
+    UnknownPlaceholder(String),
+    #[error("rendered prompt has {actual} bytes; the maximum is {maximum}")]
+    RenderedTooLong { actual: usize, maximum: usize },
+}
+
+/// Composes challenged text from a trusted template and execution context.
 pub fn format_prompt(
+    template: &PromptTemplate,
     request: &FrozenRequest,
     description: Option<&HumanDescription>,
     cwd_path: &[u8],
     cwd_identity: WorkingDirectoryIdentity,
-) -> String {
-    let command = format_command(request);
-    let cwd = bounded_byte_display(cwd_path, MAX_CWD_DISPLAY_BYTES, request);
-    let environment = format_environment(request);
-    let execution = format!(
-        "{command}; cwd={cwd} [mount={}, inode={}]; env={environment}; request-sha256={}",
-        cwd_identity.mount_id(),
-        cwd_identity.inode(),
-        request.execution_digest_hex(),
-    );
-    match description {
-        Some(description) => format!("{PROMPT_PREFIX}{} ({execution})", description.display()),
-        None => format!("{PROMPT_PREFIX}{execution}"),
-    }
+) -> Result<String, PromptTemplateError> {
+    template.render(request, description, cwd_path, cwd_identity)
 }
 
 fn format_environment(request: &FrozenRequest) -> String {
@@ -194,11 +306,11 @@ fn format_environment(request: &FrozenRequest) -> String {
     output
 }
 
-fn bounded_byte_display(value: &[u8], maximum: usize, request: &FrozenRequest) -> String {
+fn bounded_byte_display(value: &[u8], maximum: usize, request: &FrozenRequest) -> (String, bool) {
     let mut full = String::with_capacity(escaped_argument_length(value));
     push_escaped_argument(&mut full, value);
     if full.len() <= maximum {
-        return full;
+        return (full, false);
     }
 
     let marker = format!(
@@ -217,7 +329,7 @@ fn bounded_byte_display(value: &[u8], maximum: usize, request: &FrozenRequest) -
     }
     output.push('\'');
     output.push_str(&marker);
-    output
+    (output, true)
 }
 
 fn escaped_argument_length(argument: &[u8]) -> usize {
@@ -363,29 +475,59 @@ mod tests {
         assert!(!display.contains(['<', '>', '&', '\n', '\r']));
     }
 
+    fn default_template() -> PromptTemplate {
+        PromptTemplate::parse(include_str!("../dist/prompt.template").to_owned()).unwrap()
+    }
+
     #[test]
-    fn prompts_bind_command_cwd_environment_and_directory_identity() {
+    fn default_prompt_is_compact_and_uses_broker_derived_cwd() {
         let request = FrozenRequest::new(
             vec![b"id".to_vec()],
-            Some(b"/tmp".to_vec()),
+            Some(b"/claimed".to_vec()),
             vec![(b"LANG".to_vec(), b"C".to_vec())],
             RequestOptions::for_io_mode(IoMode::Pipe),
         )
         .unwrap();
         let identity = WorkingDirectoryIdentity::new_for_test(7, 11);
-        let prompt = format_prompt(&request, None, b"/actual", identity);
-        assert!(prompt.starts_with(PROMPT_PREFIX));
-        assert!(prompt.contains("$'id'; cwd=$'/actual' [mount=7, inode=11]; env=$'LANG'=$'C'"));
-        assert!(!prompt.contains("cwd=$'/tmp'"));
-        assert!(prompt.ends_with(&format!(
-            "request-sha256={}",
-            request.execution_digest_hex()
-        )));
-
         let description = HumanDescription::new("inspect account").unwrap();
-        let described = format_prompt(&request, Some(&description), b"/actual", identity);
-        assert!(described.starts_with(&format!("{PROMPT_PREFIX}inspect account (")));
-        assert!(described.ends_with(')'));
+        let prompt = format_prompt(
+            &default_template(),
+            &request,
+            Some(&description),
+            b"/actual",
+            identity,
+        )
+        .unwrap();
+        assert_eq!(
+            prompt,
+            "Authentication is required to run as root:\ninspect account\n$'id'\nin $'/actual'\nwith 1 environment override(s)"
+        );
+        assert!(!prompt.contains("/claimed"));
+        assert!(!prompt.contains("mount="));
+        assert!(!prompt.contains("sha256"));
+        assert!(!prompt.contains("LANG"));
+    }
+
+    #[test]
+    fn forensic_template_exposes_optional_context() {
+        let request = request(vec![b"id".to_vec()]);
+        let template = PromptTemplate::parse(
+            "{command}|{cwd}|{cwd_identity}|{environment}|{request_digest}".to_owned(),
+        )
+        .unwrap();
+        let prompt = format_prompt(
+            &template,
+            &request,
+            None,
+            b"/actual",
+            WorkingDirectoryIdentity::new_for_test(7, 11),
+        )
+        .unwrap();
+        assert!(
+            prompt.contains("$'id'|$'/actual'|mount=7, inode=11|$'LANG'=$'C'|"),
+            "{prompt:?}"
+        );
+        assert!(prompt.ends_with(&request.execution_digest_hex()));
     }
 
     #[test]
@@ -432,12 +574,14 @@ mod tests {
 
         assert_ne!(
             format_prompt(
+                &default_template(),
                 &request,
                 Some(&first),
                 b"/actual",
                 WorkingDirectoryIdentity::new_for_test(7, 11),
             ),
             format_prompt(
+                &default_template(),
                 &request,
                 Some(&second),
                 b"/actual",

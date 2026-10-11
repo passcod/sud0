@@ -78,18 +78,37 @@ does not implement another authorization cache or configurable timeout.
 .PP
 When interaction is allowed, the client registers
 .B /usr/bin/pkttyagent --fallback
-for its bus identity.
+for its invoking parent process.
 Authentication finishes before PTY mode changes the local terminal to raw mode.
 .PP
-With a description, the broker's detail has this form:
+The packaged prompt has this form:
 .PP
 .nf
-Authentication is required to run a command as root for: TEXT (ESCAPED-ARGV; cwd=PATH [mount=N, inode=N]; env=ASSIGNMENTS; request-sha256=DIGEST)
+Authentication is required to run as root:
+TEXT
+ESCAPED-ARGV
+in PATH
 .fi
 .PP
-Without a description, the same execution summary appears without TEXT.
-The broker derives PATH and its mount/inode identity from the received directory descriptor, shows bounded explicit environment assignments, and always includes the complete request digest.
+The TEXT line is omitted without a description.
+The broker derives PATH from the received directory descriptor, adds an environment-override count when applicable, and adds the request digest when a displayed command or path is truncated.
 The authentication agent may add its own surrounding text.
+.PP
+The root-owned
+.B /etc/sud0/prompt.template
+controls presentation.
+Supported placeholders are
+.BR {description} ,
+.BR {description_line} ,
+.BR {command} ,
+.BR {cwd} ,
+.BR {cwd_identity} ,
+.BR {environment} ,
+.BR {environment_line} ,
+.BR {request_digest} ,
+and
+.BR {digest_line} .
+An invalid or missing template prevents broker startup.
 .SH WORKING DIRECTORY
 The opened directory descriptor, not displayed pathname text, determines the execution directory.
 This preserves the directory object across a concurrent rename or pathname replacement.
@@ -151,6 +170,9 @@ Root system-bus broker.
 .B /usr/lib/sud0/sud0-exec
 Fixed root executor used by transient services.
 .TP
+.B /etc/sud0/prompt.template
+Root-owned authentication prompt template.
+.TP
 .B /usr/share/polkit-1/actions/nz.passcod.sud0.policy
 Polkit action definition.
 .TP
@@ -163,7 +185,8 @@ D-Bus activation entry.
 .B /usr/lib/systemd/system/sud0-broker.service
 D-Bus service unit; it is activated on demand and has no install section.
 .SH SECURITY
-Arguments and descriptions are disclosed to the authentication agent and may be recorded by verbose local polkit logging.
+The default prompt discloses arguments, cwd, and descriptions to the authentication agent; a custom template can also disclose environment values and other context.
+Rendered details may be recorded by verbose local polkit logging.
 Avoid putting secrets there.
 Normal broker diagnostics and unit names do not include them.
 .PP

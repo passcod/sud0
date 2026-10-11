@@ -15,8 +15,8 @@ use zbus::{Connection, DBusError, interface};
 use crate::broker_auth::{ZbusAuthority, authorize};
 use crate::{
     AuthorizationOutcome, AuthorizationRequest, CallerIdentity, Cancellation, CancellationReason,
-    CommandOutcome, LaunchError, LaunchRequest, PreparedRequest, RunWire, SystemdLauncher,
-    WindowSize, set_pty_window_size,
+    CommandOutcome, LaunchError, LaunchRequest, PreparedRequest, PromptTemplate, RunWire,
+    SystemdLauncher, WindowSize, set_pty_window_size,
 };
 
 const PHASE_AUTHORIZING: u8 = 0;
@@ -449,6 +449,7 @@ impl Drop for ValidationPermit {
 pub struct BrokerManager {
     connection: Connection,
     launcher: SystemdLauncher,
+    prompt_template: Arc<PromptTemplate>,
     limits: Arc<BrokerLimits>,
     shutdown: watch::Receiver<bool>,
 }
@@ -457,11 +458,13 @@ impl BrokerManager {
     pub fn new(
         connection: Connection,
         launcher: SystemdLauncher,
+        prompt_template: PromptTemplate,
         shutdown: watch::Receiver<bool>,
     ) -> Self {
         Self {
             connection,
             launcher,
+            prompt_template: Arc::new(prompt_template),
             limits: Arc::new(BrokerLimits::default()),
             shutdown,
         }
@@ -515,17 +518,19 @@ impl BrokerManager {
         );
         let connection = self.connection.clone();
         let launcher = self.launcher.clone();
+        let prompt_template = self.prompt_template.clone();
         let shutdown = self.shutdown.clone();
         tokio::spawn(async move {
-            run_pipeline(
+            run_pipeline(RunPipeline {
                 connection,
                 launcher,
+                prompt_template,
                 caller,
                 prepared,
                 shared,
                 cancellation,
                 shutdown,
-            )
+            })
             .await;
         });
         Ok(path)
@@ -564,15 +569,28 @@ impl BrokerManager {
     }
 }
 
-async fn run_pipeline(
+struct RunPipeline {
     connection: Connection,
     launcher: SystemdLauncher,
+    prompt_template: Arc<PromptTemplate>,
     caller: CallerIdentity,
     prepared: PreparedRequest,
     shared: Arc<SharedInvocation>,
     cancellation: Cancellation,
-    mut shutdown: watch::Receiver<bool>,
-) {
+    shutdown: watch::Receiver<bool>,
+}
+
+async fn run_pipeline(pipeline: RunPipeline) {
+    let RunPipeline {
+        connection,
+        launcher,
+        prompt_template,
+        caller,
+        prepared,
+        shared,
+        cancellation,
+        mut shutdown,
+    } = pipeline;
     let shutdown_cancellation = cancellation.clone();
     let _shutdown_monitor = AbortOnDrop(tokio::spawn(async move {
         if shutdown.changed().await.is_ok() && *shutdown.borrow() {
@@ -602,6 +620,7 @@ async fn run_pipeline(
     };
     let authorization = match AuthorizationRequest::for_run(
         &caller,
+        &prompt_template,
         prepared.request(),
         prepared.description(),
         &cwd_path,

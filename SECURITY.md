@@ -38,8 +38,12 @@ Its defaults require administrator authentication for any or inactive sessions a
 Polkit's native retained authorization is normally about five minutes; sud0 has no separate timer or cache.
 Retention is keyed by action and equivalent subject, not by command details, so another command can reuse a retained grant.
 
-The broker gives polkit a sanitized execution summary containing argv, a cwd path and mount/inode identity derived from the received directory descriptor, bounded explicit environment assignments, the complete request digest, and the optional description.
-Those values may contain secrets and are disclosed to the authentication agent; verbose local polkit logging may also record them.
+The default prompt shows sanitized argv, a cwd path derived from the received directory descriptor, and the optional description.
+It adds an environment-override count only when overrides exist and a request digest only when command or cwd display is truncated.
+The root-owned `/etc/sud0/prompt.template` may use `{description}`, `{description_line}`, `{command}`, `{cwd}`, `{cwd_identity}`, `{environment}`, `{environment_line}`, `{request_digest}`, and `{digest_line}`.
+The broker validates and bounds that template at startup; unknown placeholders, malformed braces, missing files, or oversized input fail startup.
+A custom template can disclose explicit environment values or an unconditional digest, so administrators must treat it as security-sensitive configuration.
+Rendered values may contain secrets and are disclosed to the authentication agent; verbose local polkit logging may also record them.
 Prompt text is presentation only and is never parsed for execution.
 
 ## Command resolution and environment

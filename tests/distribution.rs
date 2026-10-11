@@ -5,9 +5,9 @@ use clap::Parser;
 use sud0::cli::Cli;
 use sud0::constants::{
     BROKER_BUS_NAME, BROKER_INVOCATION_INTERFACE, BROKER_MANAGER_INTERFACE, BROKER_MANAGER_PATH,
-    EXECUTOR_PATH, POLKIT_RUN_ACTION,
+    EXECUTOR_PATH, POLKIT_RUN_ACTION, PROMPT_TEMPLATE_PATH,
 };
-use sud0::{InvocationStatusWire, RunWire, StdioWire, WindowSize};
+use sud0::{InvocationStatusWire, PromptTemplate, RunWire, StdioWire, WindowSize};
 use zbus::zvariant::Type;
 
 fn asset(path: &str) -> String {
@@ -43,6 +43,10 @@ fn readme_editor_example_matches_the_cli() {
 
 #[test]
 fn distribution_assets_match_protocol_constants() {
+    let template = asset("dist/prompt.template");
+    PromptTemplate::parse(template).unwrap();
+    assert_eq!(PROMPT_TEMPLATE_PATH, "/etc/sud0/prompt.template");
+
     let policy = asset("dist/polkit/nz.passcod.sud0.policy");
     assert!(policy.contains(&format!("action id=\"{POLKIT_RUN_ACTION}\"")));
     assert!(!policy.contains("org.freedesktop.policykit.exec.path"));

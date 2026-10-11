@@ -21,12 +21,16 @@ $ sud0 -v
 For the editor example, the authentication agent receives prompt text shaped like:
 
 ```text
-Authentication is required to run a command as root for: editing the SSH config ($'/usr/bin/nvim' $'/etc/ssh/sshd_config'; cwd=$'/home/alice' [mount=42, inode=1234]; env=none; request-sha256=...)
+Authentication is required to run as root:
+editing the SSH config
+$'/usr/bin/nvim' $'/etc/ssh/sshd_config'
+in $'/home/alice'
 ```
 
 The agent may surround that detail with its own UI.
-Without `-d`, the same execution summary appears without the human description.
-The broker derives the displayed cwd path and mount/inode identity from the received directory descriptor, lists explicit environment assignments within a display bound, and always includes the complete request digest.
+Without `-d`, the description line is omitted.
+The broker derives the displayed cwd from the received directory descriptor; environment overrides are represented by a count only when present, and the request digest appears only when a displayed command or cwd is truncated.
+The root-owned `/etc/sud0/prompt.template` can customize presentation with the documented placeholders in [SECURITY.md](SECURITY.md); an unprivileged request cannot choose or alter it.
 Arguments, descriptions, paths, and environment values can contain secrets; see [Privacy](#privacy).
 
 Options must precede the command.
@@ -143,8 +147,9 @@ The broker is D-Bus activated; `systemctl enable sud0-broker.service` is neither
 
 ## Privacy
 
-The authentication prompt intentionally discloses escaped argv, the broker-derived cwd, explicit environment assignments, the request digest, and an optional description to the selected authentication agent.
-A verbose local polkit configuration may log those details.
+The default authentication prompt discloses escaped argv, the broker-derived cwd, and an optional description; it adds an environment-override count and truncation digest only when applicable.
+A custom root-owned template can disclose explicit environment values, cwd identity, or an unconditional digest.
+A verbose local polkit configuration may log the rendered details.
 Do not put secrets in command arguments, `--setenv`, paths, or `-d` unless that disclosure is acceptable.
 Normal broker logs and transient-unit names do not contain argv or descriptions, and sud0 does not log command output.
 

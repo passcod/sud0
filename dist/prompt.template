@@ -1,0 +1,3 @@
+Authentication is required to run as root:{description_line}
+{command}
+in {cwd}{environment_line}{digest_line}

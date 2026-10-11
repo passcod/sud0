@@ -8,6 +8,7 @@ trap 'rm -rf "$stage"' EXIT HUP INT TERM
 make -C "$repo" DESTDIR="$stage" PREFIX=/usr install >/dev/null
 
 expected=$(cat <<'FILES'
+644 etc/sud0/prompt.template
 644 usr/lib/systemd/system/sud0-broker.service
 644 usr/share/dbus-1/system-services/nz.passcod.sud0.service
 644 usr/share/dbus-1/system.d/nz.passcod.sud0.conf

@@ -7,7 +7,10 @@ use tokio::sync::watch;
 use zbus::zvariant::{Fd, Value};
 
 use crate::constants::POLKIT_RUN_ACTION;
-use crate::{FrozenRequest, HumanDescription, WorkingDirectoryIdentity, format_prompt};
+use crate::{
+    FrozenRequest, HumanDescription, PromptTemplate, PromptTemplateError, WorkingDirectoryIdentity,
+    format_prompt,
+};
 
 const POLKIT_ALLOW_USER_INTERACTION: u32 = 1;
 
@@ -89,6 +92,7 @@ pub struct AuthorizationRequest {
 impl AuthorizationRequest {
     pub fn for_run(
         caller: &CallerIdentity,
+        template: &PromptTemplate,
         request: &FrozenRequest,
         description: Option<&HumanDescription>,
         cwd_path: &[u8],
@@ -104,7 +108,7 @@ impl AuthorizationRequest {
                 .try_clone_to_owned()
                 .map_err(AuthorizationError::DuplicatePidfd)?,
             action_id: POLKIT_RUN_ACTION,
-            message: format_prompt(request, description, cwd_path, cwd_identity),
+            message: format_prompt(template, request, description, cwd_path, cwd_identity)?,
             flags: u32::from(allow_interaction) * POLKIT_ALLOW_USER_INTERACTION,
             cancellation_id: random_identifier("sud0-auth")?,
         })
@@ -331,6 +335,8 @@ impl Authority for ZbusAuthority {
 
 #[derive(Debug, Error)]
 pub enum AuthorizationError {
+    #[error("failed to render trusted authentication prompt: {0}")]
+    Prompt(#[from] PromptTemplateError),
     #[error("failed to duplicate authenticated caller pidfd: {0}")]
     DuplicatePidfd(std::io::Error),
     #[error("failed to obtain a random authorization identifier: {0}")]
@@ -374,8 +380,10 @@ mod tests {
     fn run_request_has_exact_broker_derived_policy_fields() {
         let description = HumanDescription::new("disk maintenance").unwrap();
         let cwd_identity = WorkingDirectoryIdentity::new_for_test(7, 11);
+        let template = PromptTemplate::parse("{description}|{command}|{cwd}".to_owned()).unwrap();
         let check = AuthorizationRequest::for_run(
             &caller(),
+            &template,
             &request(),
             Some(&description),
             b"/actual",
@@ -390,7 +398,14 @@ mod tests {
         assert_eq!(check.flags(), 1);
         assert_eq!(
             check.message(),
-            format_prompt(&request(), Some(&description), b"/actual", cwd_identity)
+            format_prompt(
+                &template,
+                &request(),
+                Some(&description),
+                b"/actual",
+                cwd_identity,
+            )
+            .unwrap()
         );
         assert!(!check.cancellation_id().is_empty());
     }
