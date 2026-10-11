@@ -20,7 +20,7 @@ The broker supplies trusted prompt details because polkit rejects details from o
 The client MUST NOT nominate the polkit subject, caller UID, caller PID, unit name, executable helper, or transient-unit properties.
 The broker MUST derive caller identity from authenticated transport metadata.
 
-The dedicated `io.github.passcod.sud0.run` action represents permission to run arbitrary root commands through `sud0`.
+The dedicated `nz.passcod.sud0.run` action represents permission to run arbitrary root commands through `sud0`.
 Its active-session default is `auth_admin_keep`; inactive and other-session defaults are `auth_admin`.
 Polkit's retained grant is keyed by action and subject equivalence, not by command details, so commands after the first challenge may differ during the retained window.
 
@@ -60,7 +60,7 @@ For every request, the broker:
 1. Copies request bytes and the opened working-directory descriptor into broker-owned state.
 2. Validates structure, limits, NUL exclusion, environment names, option combinations, and the directory descriptor.
 3. Freezes the request and creates its prompt rendering.
-4. Calls PolicyKit1 for the actual caller and `io.github.passcod.sud0.run`.
+4. Calls PolicyKit1 for the actual caller and `nz.passcod.sud0.run`.
 5. Stops without creating a service on denial, dismissal, cancellation, malformed input, or caller disappearance.
 6. Rechecks that the originating system-bus name is still owned.
 7. Encodes the same frozen execution request in a memfd and seals it against writes, growth, shrinkage, and further seal changes.

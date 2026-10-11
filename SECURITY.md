@@ -20,7 +20,7 @@ No sud0 file is setuid or setgid.
 The installed broker, executor, policies, activation entry, and service unit must be owned by root and not writable by ordinary users.
 The broker runs as root; the polkit action deliberately has no executable-owner annotation.
 
-The system-bus policy allows only root to own `io.github.passcod.sud0`, while ordinary users may send calls to it.
+The system-bus policy allows only root to own `nz.passcod.sud0`, while ordinary users may send calls to it.
 For each call the broker derives the caller UID and unique bus name from authenticated D-Bus transport credentials.
 The client cannot nominate its polkit subject, UID, PID, transient-unit properties, helper path, or unit name.
 Dynamic invocation objects are bound to their creating unique bus name; owner loss cancels pending or running work.
@@ -32,7 +32,7 @@ It changes directory through the descriptor, so pathname replacement does not re
 
 ## Authorization and prompt disclosure
 
-The `io.github.passcod.sud0.run` action authorizes arbitrary root command execution.
+The `nz.passcod.sud0.run` action authorizes arbitrary root command execution.
 Its defaults require administrator authentication for any or inactive sessions and use `auth_admin_keep` for active sessions.
 Polkit's native retained authorization is normally about five minutes; sud0 has no separate timer or cache.
 Retention is keyed by action and equivalent subject, not by command details, so another command can reuse a retained grant.

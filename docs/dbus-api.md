@@ -6,10 +6,10 @@ The machine-readable introspection fixture is [`dbus-api.xml`](dbus-api.xml); it
 
 ## Service and objects
 
-The root broker owns `io.github.passcod.sud0` on the system bus and exports `io.github.passcod.sud0.Manager1` at `/io/github/passcod/sud0`.
-`Run` returns a random object below `/io/github/passcod/sud0/invocation/` that implements `io.github.passcod.sud0.Invocation1`.
+The root broker owns `nz.passcod.sud0` on the system bus and exports `nz.passcod.sud0.Manager1` at `/nz/passcod/sud0`.
+`Run` returns a random object below `/nz/passcod/sud0/invocation/` that implements `nz.passcod.sud0.Invocation1`.
 Each invocation records the caller's authenticated unique bus name.
-Every invocation method rejects any other bus connection with `io.github.passcod.sud0.Error.AccessDenied`.
+Every invocation method rejects any other bus connection with `nz.passcod.sud0.Error.AccessDenied`.
 When that unique name loses ownership, the broker cancels authorization or the running transient service and removes its descriptor state.
 
 ## Manager1
@@ -50,6 +50,6 @@ The category identifies a failure class and does not contain argv, descriptions,
 
 ## Errors
 
-Broker-defined errors have the prefix `io.github.passcod.sud0.Error` and members `AccessDenied`, `InvalidRequest`, `NotReady`, `NotAvailable`, `LimitsExceeded`, and `Failed`.
+Broker-defined errors have the prefix `nz.passcod.sud0.Error` and members `AccessDenied`, `InvalidRequest`, `NotReady`, `NotAvailable`, `LimitsExceeded`, and `Failed`.
 Malformed requests fail before authorization.
 Internal zbus errors can also be returned using their native D-Bus error names.

@@ -4,7 +4,7 @@ Documentation=man:sud0(1) https://github.com/passcod/sud0
 
 [Service]
 Type=dbus
-BusName=io.github.passcod.sud0
+BusName=nz.passcod.sud0
 ExecStart=/usr/lib/sud0/sud0-broker
 User=root
 UMask=0077

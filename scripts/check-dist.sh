@@ -14,10 +14,10 @@ cat >"$scratch/catalog.xml" <<'EOF_CATALOG'
 </catalog>
 EOF_CATALOG
 XML_CATALOG_FILES="$scratch/catalog.xml" xmllint --nonet --noout --valid \
-    "$repo/dist/polkit/io.github.passcod.sud0.policy"
+    "$repo/dist/polkit/nz.passcod.sud0.policy"
 XML_CATALOG_FILES="$scratch/catalog.xml" xmllint --nonet --noout --valid \
     "$repo/docs/dbus-api.xml"
-xmllint --nonet --noout "$repo/dist/dbus-1/system.d/io.github.passcod.sud0.conf"
+xmllint --nonet --noout "$repo/dist/dbus-1/system.d/nz.passcod.sud0.conf"
 
 # The installed busconfig DTD predates send_destination. Parse that modern
 # attribute with the installed daemon in an otherwise complete throwaway config.
@@ -29,7 +29,7 @@ cat >"$scratch/bus.conf" <<EOF_BUS
   <listen>unix:path=$scratch/bus</listen>
   <servicedir>$scratch/services</servicedir>
   <auth>EXTERNAL</auth>
-  <include>$repo/dist/dbus-1/system.d/io.github.passcod.sud0.conf</include>
+  <include>$repo/dist/dbus-1/system.d/nz.passcod.sud0.conf</include>
 </busconfig>
 EOF_BUS
 dbus-daemon --config-file="$scratch/bus.conf" --introspect >/dev/null

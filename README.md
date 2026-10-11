@@ -36,7 +36,7 @@ It does not evaluate a shell command string or support alternate users.
 
 ## Authorization
 
-The single `io.github.passcod.sud0.run` action means permission to run arbitrary root commands.
+The single `nz.passcod.sud0.run` action means permission to run arbitrary root commands.
 Active local sessions use polkit's native `auth_admin_keep` retention, normally about five minutes, not ten.
 Inactive and other-session subjects require administrator authentication each time.
 The retained grant is scoped to the action and equivalent subject, not command details, so a later command can differ from the command that caused the prompt.

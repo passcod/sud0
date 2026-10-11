@@ -9,7 +9,7 @@ sud0 \- run a command as root after polkit authorization
 .B sud0
 sends a bounded command request to a root system-bus broker.
 The broker derives the caller identity from D-Bus credentials, asks polkit to authorize
-.BR io.github.passcod.sud0.run ,
+.BR nz.passcod.sud0.run ,
 and starts a separate systemd transient service running a fixed executor.
 No sud0 binary is setuid or setgid.
 .PP
@@ -151,13 +151,13 @@ Root system-bus broker.
 .B /usr/lib/sud0/sud0-exec
 Fixed root executor used by transient services.
 .TP
-.B /usr/share/polkit-1/actions/io.github.passcod.sud0.policy
+.B /usr/share/polkit-1/actions/nz.passcod.sud0.policy
 Polkit action definition.
 .TP
-.B /usr/share/dbus-1/system.d/io.github.passcod.sud0.conf
+.B /usr/share/dbus-1/system.d/nz.passcod.sud0.conf
 System-bus ownership and send policy.
 .TP
-.B /usr/share/dbus-1/system-services/io.github.passcod.sud0.service
+.B /usr/share/dbus-1/system-services/nz.passcod.sud0.service
 D-Bus activation entry.
 .TP
 .B /usr/lib/systemd/system/sud0-broker.service

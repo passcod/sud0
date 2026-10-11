@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
-<node name="/io/github/passcod/sud0">
-  <interface name="io.github.passcod.sud0.Manager1">
+<node name="/nz/passcod/sud0">
+  <interface name="nz.passcod.sud0.Manager1">
     <method name="Run">
       <arg name="request" type="(aysh(yah)b(qqqq))" direction="in"/>
       <arg name="invocation" type="o" direction="out"/>
@@ -14,7 +14,7 @@
   <node name="invocation">
     <!-- Template: runtime children are named with 32 lowercase hex digits. -->
     <node name="00000000000000000000000000000000">
-      <interface name="io.github.passcod.sud0.Invocation1">
+      <interface name="nz.passcod.sud0.Invocation1">
         <method name="Status">
           <arg name="status" type="(ybyiibs)" direction="out"/>
         </method>

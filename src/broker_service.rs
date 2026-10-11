@@ -275,7 +275,7 @@ async fn remove_invocation(
     shared.changed.notify_waiters();
 }
 
-#[interface(name = "io.github.passcod.sud0.Invocation1")]
+#[interface(name = "nz.passcod.sud0.Invocation1")]
 impl InvocationObject {
     async fn status(
         &self,
@@ -468,7 +468,7 @@ impl BrokerManager {
     }
 }
 
-#[interface(name = "io.github.passcod.sud0.Manager1")]
+#[interface(name = "nz.passcod.sud0.Manager1")]
 impl BrokerManager {
     async fn run(
         &self,
@@ -815,13 +815,13 @@ fn random_invocation_path() -> Result<OwnedObjectPath, BrokerDbusError> {
     let mut random = [0_u8; 16];
     getrandom::fill(&mut random)
         .map_err(|_| BrokerDbusError::Failed("identifier generation failed".to_owned()))?;
-    let path = format!("/io/github/passcod/sud0/invocation/{}", hex::encode(random));
+    let path = format!("/nz/passcod/sud0/invocation/{}", hex::encode(random));
     OwnedObjectPath::try_from(path)
         .map_err(|_| BrokerDbusError::Failed("identifier generation failed".to_owned()))
 }
 
 #[derive(Debug, DBusError)]
-#[zbus(prefix = "io.github.passcod.sud0.Error")]
+#[zbus(prefix = "nz.passcod.sud0.Error")]
 pub enum BrokerDbusError {
     AccessDenied(String),
     InvalidRequest(String),
@@ -835,9 +835,9 @@ pub enum BrokerDbusError {
 
 /// Type-only client proxy for the public broker manager API.
 #[zbus::proxy(
-    interface = "io.github.passcod.sud0.Manager1",
-    default_service = "io.github.passcod.sud0",
-    default_path = "/io/github/passcod/sud0",
+    interface = "nz.passcod.sud0.Manager1",
+    default_service = "nz.passcod.sud0",
+    default_path = "/nz/passcod/sud0",
     gen_blocking = false
 )]
 pub trait Manager {
@@ -846,7 +846,7 @@ pub trait Manager {
 }
 
 /// Type-only client proxy for owner-bound invocation objects.
-#[zbus::proxy(interface = "io.github.passcod.sud0.Invocation1", gen_blocking = false)]
+#[zbus::proxy(interface = "nz.passcod.sud0.Invocation1", gen_blocking = false)]
 pub trait Invocation {
     fn status(&self) -> zbus::Result<InvocationStatusWire>;
     fn wait(&self) -> zbus::Result<InvocationStatusWire>;
@@ -980,10 +980,7 @@ mod tests {
 
     #[test]
     fn exported_interfaces_match_constants() {
-        assert_eq!(BROKER_MANAGER_INTERFACE, "io.github.passcod.sud0.Manager1");
-        assert_eq!(
-            BROKER_INVOCATION_INTERFACE,
-            "io.github.passcod.sud0.Invocation1"
-        );
+        assert_eq!(BROKER_MANAGER_INTERFACE, "nz.passcod.sud0.Manager1");
+        assert_eq!(BROKER_INVOCATION_INTERFACE, "nz.passcod.sud0.Invocation1");
     }
 }

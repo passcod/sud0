@@ -43,15 +43,15 @@ fn readme_editor_example_matches_the_cli() {
 
 #[test]
 fn distribution_assets_match_protocol_constants() {
-    let policy = asset("dist/polkit/io.github.passcod.sud0.policy");
+    let policy = asset("dist/polkit/nz.passcod.sud0.policy");
     assert!(policy.contains(&format!("action id=\"{POLKIT_RUN_ACTION}\"")));
     assert!(!policy.contains("org.freedesktop.policykit.exec.path"));
 
-    let bus_policy = asset("dist/dbus-1/system.d/io.github.passcod.sud0.conf");
+    let bus_policy = asset("dist/dbus-1/system.d/nz.passcod.sud0.conf");
     assert!(bus_policy.contains(&format!("allow own=\"{BROKER_BUS_NAME}\"")));
     assert!(bus_policy.contains(&format!("allow send_destination=\"{BROKER_BUS_NAME}\"")));
 
-    let activation = asset("dist/dbus-1/system-services/io.github.passcod.sud0.service");
+    let activation = asset("dist/dbus-1/system-services/nz.passcod.sud0.service");
     assert!(activation.contains(&format!("Name={BROKER_BUS_NAME}")));
     assert!(activation.contains("Exec=/usr/lib/sud0/sud0-broker"));
 

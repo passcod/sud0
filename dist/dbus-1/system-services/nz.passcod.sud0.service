@@ -1,5 +1,5 @@
 [D-BUS Service]
-Name=io.github.passcod.sud0
+Name=nz.passcod.sud0
 Exec=/usr/lib/sud0/sud0-broker
 User=root
 SystemdService=sud0-broker.service

@@ -3,7 +3,7 @@
 <policyconfig>
   <vendor>sud0</vendor>
   <vendor_url>https://github.com/passcod/sud0</vendor_url>
-  <action id="io.github.passcod.sud0.run">
+  <action id="nz.passcod.sud0.run">
     <description>Run a command as root with sud0</description>
     <message>Authentication is required to run a command as root</message>
     <defaults>

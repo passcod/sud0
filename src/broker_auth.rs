@@ -341,7 +341,7 @@ mod tests {
 
         assert_eq!(check.subject_kind(), "system-bus-name");
         assert_eq!(check.subject_name(), ":1.42");
-        assert_eq!(check.action_id(), "io.github.passcod.sud0.run");
+        assert_eq!(check.action_id(), "nz.passcod.sud0.run");
         assert_eq!(check.flags(), 1);
         assert_eq!(
             check.message(),
@@ -355,7 +355,7 @@ mod tests {
         let check = AuthorizationRequest::for_validation(&caller(), false).unwrap();
         assert_eq!(check.subject_kind(), "system-bus-name");
         assert_eq!(check.subject_name(), ":1.42");
-        assert_eq!(check.action_id(), "io.github.passcod.sud0.run");
+        assert_eq!(check.action_id(), "nz.passcod.sud0.run");
         assert_eq!(check.flags(), 0);
         assert_eq!(
             check.message(),
