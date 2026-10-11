@@ -149,7 +149,13 @@ fn format_command_with_state(request: &FrozenRequest) -> (String, bool) {
 /// A validated root-owned format for authentication messages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PromptTemplate {
-    text: String,
+    parts: Vec<PromptPart>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PromptPart {
+    Literal(String),
+    Placeholder(String),
 }
 
 impl PromptTemplate {
@@ -160,8 +166,23 @@ impl PromptTemplate {
                 maximum: MAX_PROMPT_TEMPLATE_BYTES,
             });
         }
-        let mut rest = text.as_str();
-        while let Some(open) = rest.find('{') {
+
+        let mut parts = Vec::new();
+        let mut offset = 0;
+        while offset < text.len() {
+            let rest = &text[offset..];
+            let open = rest.find('{');
+            let unexpected_close = rest.find('}');
+            if unexpected_close.is_some_and(|close| open.is_none_or(|open| close < open)) {
+                return Err(PromptTemplateError::UnexpectedClose);
+            }
+            let Some(open) = open else {
+                parts.push(PromptPart::Literal(rest.to_owned()));
+                break;
+            };
+            if open != 0 {
+                parts.push(PromptPart::Literal(rest[..open].to_owned()));
+            }
             let after_open = &rest[open + 1..];
             let close = after_open
                 .find('}')
@@ -170,12 +191,10 @@ impl PromptTemplate {
             if !ALLOWED_PLACEHOLDERS.contains(&name) {
                 return Err(PromptTemplateError::UnknownPlaceholder(name.to_owned()));
             }
-            rest = &after_open[close + 1..];
+            parts.push(PromptPart::Placeholder(name.to_owned()));
+            offset += open + close + 2;
         }
-        if rest.contains('}') {
-            return Err(PromptTemplateError::UnexpectedClose);
-        }
-        Ok(Self { text })
+        Ok(Self { parts })
     }
 
     pub fn render(
@@ -225,15 +244,23 @@ impl PromptTemplate {
             ("digest_line", digest_line.as_str()),
         ];
 
-        let mut rendered = self.text.clone();
-        for (name, value) in values {
-            rendered = rendered.replace(&format!("{{{name}}}"), value);
-        }
-        if rendered.len() > MAX_PROMPT_BYTES {
-            return Err(PromptTemplateError::RenderedTooLong {
-                actual: rendered.len(),
-                maximum: MAX_PROMPT_BYTES,
-            });
+        let mut rendered = String::new();
+        for part in &self.parts {
+            match part {
+                PromptPart::Literal(literal) => rendered.push_str(literal),
+                PromptPart::Placeholder(name) => rendered.push_str(
+                    values
+                        .iter()
+                        .find_map(|(candidate, value)| (*candidate == name).then_some(*value))
+                        .expect("validated placeholder has a render value"),
+                ),
+            }
+            if rendered.len() > MAX_PROMPT_BYTES {
+                return Err(PromptTemplateError::RenderedTooLong {
+                    actual: rendered.len(),
+                    maximum: MAX_PROMPT_BYTES,
+                });
+            }
         }
         Ok(rendered.trim_end().to_owned())
     }
@@ -528,6 +555,42 @@ mod tests {
             "{prompt:?}"
         );
         assert!(prompt.ends_with(&request.execution_digest_hex()));
+    }
+
+    #[test]
+    fn template_rejects_malformed_braces_and_unknown_placeholders() {
+        assert_eq!(
+            PromptTemplate::parse("before } {command}".to_owned()),
+            Err(PromptTemplateError::UnexpectedClose)
+        );
+        assert_eq!(
+            PromptTemplate::parse("{command".to_owned()),
+            Err(PromptTemplateError::UnclosedPlaceholder)
+        );
+        assert_eq!(
+            PromptTemplate::parse("{unknown}".to_owned()),
+            Err(PromptTemplateError::UnknownPlaceholder(
+                "unknown".to_owned()
+            ))
+        );
+    }
+
+    #[test]
+    fn rendered_values_are_never_reparsed_as_placeholders() {
+        let request = request(vec![b"id".to_vec()]);
+        let description = HumanDescription::new("literal {command}").unwrap();
+        let template = PromptTemplate::parse("{description}".to_owned()).unwrap();
+        assert_eq!(
+            format_prompt(
+                &template,
+                &request,
+                Some(&description),
+                b"/actual",
+                WorkingDirectoryIdentity::new_for_test(7, 11),
+            )
+            .unwrap(),
+            "literal {command}"
+        );
     }
 
     #[test]
