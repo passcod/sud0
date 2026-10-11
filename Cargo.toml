@@ -3,6 +3,11 @@ name = "sud0"
 version = "0.1.0"
 edition = "2024"
 description = "A polkit-authorized root command runner"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/passcod/sud0"
+homepage = "https://github.com/passcod/sud0"
+readme = "README.md"
+rust-version = "1.89"
 publish = false
 default-run = "sud0"
 
