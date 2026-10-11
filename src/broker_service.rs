@@ -180,6 +180,16 @@ impl SharedInvocation {
         }
     }
 
+    async fn wait_until_released(&self) {
+        loop {
+            let notified = self.changed.notified();
+            if self.state.lock().unwrap().released {
+                return;
+            }
+            notified.await;
+        }
+    }
+
     fn install_pty(&self, pty_master: OwnedFd) {
         self.state.lock().unwrap().pty_master = Some(pty_master);
         self.changed.notify_waiters();
@@ -192,6 +202,15 @@ impl SharedInvocation {
         state.released = true;
         drop(state);
         self.changed.notify_waiters();
+    }
+}
+
+#[derive(Debug)]
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
     }
 }
 
@@ -506,7 +525,10 @@ impl BrokerManager {
         let _permit = self.limits.acquire_validation(caller.sender())?;
         let cancellation = Cancellation::new();
         let owner_changes = owner_change_stream(&self.connection, caller.sender()).await?;
-        let owner_monitor = spawn_validation_owner_monitor(owner_changes, cancellation.clone());
+        let _owner_monitor = AbortOnDrop(spawn_validation_owner_monitor(
+            owner_changes,
+            cancellation.clone(),
+        ));
         let mut shutdown = self.shutdown.clone();
         let shutdown_cancellation = cancellation.clone();
         tokio::spawn(async move {
@@ -520,7 +542,6 @@ impl BrokerManager {
         let outcome = authorize(&authority, &request, cancellation.subscribe())
             .await
             .map_err(|_| BrokerDbusError::Failed("authorization failed".to_owned()))?;
-        owner_monitor.abort();
         if outcome != AuthorizationOutcome::Authorized {
             return Ok(false);
         }
@@ -744,8 +765,12 @@ fn spawn_invocation_expiry(
 ) {
     tokio::spawn(async move {
         shared.wait_until_terminal().await;
-        tokio::time::sleep(INVOCATION_EXPIRY).await;
-        remove_invocation(&connection, path, &shared).await;
+        tokio::select! {
+            () = shared.wait_until_released() => {}
+            () = tokio::time::sleep(INVOCATION_EXPIRY) => {
+                remove_invocation(&connection, path, &shared).await;
+            }
+        }
         drop(permit);
     });
 }
