@@ -19,7 +19,7 @@ impl WorkingDirectoryFd {
     pub fn open(path: &CStr) -> Result<Self, WorkingDirectoryError> {
         let fd = open(
             path,
-            OFlag::O_RDONLY | OFlag::O_DIRECTORY | OFlag::O_CLOEXEC,
+            OFlag::O_PATH | OFlag::O_DIRECTORY | OFlag::O_CLOEXEC,
             Mode::empty(),
         )
         .map_err(WorkingDirectoryError::Open)?;
@@ -71,6 +71,7 @@ mod tests {
     use std::fs::File;
     use std::os::fd::OwnedFd;
     use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::PermissionsExt;
 
     use super::*;
 
@@ -84,6 +85,18 @@ mod tests {
             WorkingDirectoryFd::try_from(OwnedFd::from(file)),
             Err(WorkingDirectoryError::NotDirectory)
         ));
+    }
+
+    #[test]
+    fn opens_execute_only_directory() {
+        let parent = tempfile::tempdir().unwrap();
+        let directory = parent.path().join("execute-only");
+        std::fs::create_dir(&directory).unwrap();
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o111)).unwrap();
+        let path = std::ffi::CString::new(directory.as_os_str().as_bytes()).unwrap();
+
+        let opened = WorkingDirectoryFd::open(&path).unwrap();
+        assert!(fstat(opened.as_fd()).unwrap().st_mode & libc::S_IFMT == libc::S_IFDIR);
     }
 
     #[test]

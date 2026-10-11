@@ -29,9 +29,17 @@ const BASELINE_ENVIRONMENT: &[(&[u8], &[u8])] = &[
 
 /// Runs the fixed privileged executor transaction.
 ///
-/// This entry point is synchronous and must be called before creating any threads. It either
-/// replaces the current process image or returns an error after failing closed.
-pub fn run() -> Result<Infallible, ExecutorError> {
+/// It either replaces the current process image or returns an error after failing closed.
+///
+/// # Safety
+///
+/// The caller must be the initial, single-threaded entry point of a freshly executed process.
+/// Descriptors 3 and 4 must be open and uniquely owned by this transaction; no Rust value or other
+/// code may own, close, duplicate, or replace them during the call. No live Rust value may own any
+/// descriptor at or above 3 when this function reaches its close-range step, other than the two
+/// values created internally and relinquished immediately before that step. No signal handler or
+/// callback may mutate the descriptor table during the call.
+pub unsafe fn run() -> Result<Infallible, ExecutorError> {
     require_root_uids()?;
     validate_process_activation_environment()?;
     let (request_file, working_directory) = take_activation_fds()?;
