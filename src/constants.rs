@@ -1,9 +1,17 @@
 //! Security contracts and limits shared by every protocol participant.
 
-/// The sole systemd activation descriptor name accepted by `sud0-exec`.
+/// The systemd activation descriptor name accepted for the sealed request.
 pub const REQUEST_FD_NAME: &str = "sud0-request";
-/// The descriptor assigned to the first systemd-activated file descriptor.
+/// The descriptor assigned to the sealed request by systemd activation.
 pub const REQUEST_FD: i32 = 3;
+/// The systemd activation descriptor name accepted for the opened working directory.
+pub const CWD_FD_NAME: &str = "sud0-cwd";
+/// The descriptor assigned to the opened working directory by systemd activation.
+pub const CWD_FD: i32 = 4;
+/// Exact colon-separated systemd activation names, in descriptor order.
+pub const ACTIVATION_FD_NAMES: &str = "sud0-request:sud0-cwd";
+/// Exact number of systemd activation descriptors.
+pub const ACTIVATION_FD_COUNT: u32 = 2;
 
 /// Fixed root command search path; ambient `PATH` is never consulted.
 pub const ROOT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/bin";
