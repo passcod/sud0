@@ -89,7 +89,7 @@ The client receives the master only after successful startup, forwards bytes tra
 `sud0` MUST NOT emit terminal background tinting, SGR decoration, OSC titles, shell prompt prefixes, or command-output logs.
 Pipe mode MUST preserve binary streams without allocating a PTY.
 
-When interaction is allowed, the client registers `/usr/bin/pkttyagent --fallback` for its system-bus identity so terminal-only sessions work while an existing desktop authentication agent remains preferred.
+When interaction is allowed, the client registers `/usr/bin/pkttyagent --fallback` for the same broker-derived invoking parent process used as the polkit subject, so terminal-only sessions work while an existing desktop authentication agent remains preferred.
 
 ## Initial command-line interface
 
