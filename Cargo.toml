@@ -1,0 +1,38 @@
+[package]
+name = "sud0"
+version = "0.1.0"
+edition = "2024"
+description = "A polkit-authorized root command runner"
+publish = false
+default-run = "sud0"
+
+[lib]
+name = "sud0"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sud0"
+path = "src/main.rs"
+
+[[bin]]
+name = "sud0-broker"
+path = "src/bin/sud0-broker.rs"
+
+[[bin]]
+name = "sud0-exec"
+path = "src/bin/sud0-exec.rs"
+
+[dependencies]
+clap = { version = "=4.6.7", features = ["derive"] }
+hex = "=0.4.3"
+nix = { version = "=0.31.3", features = ["fs", "process", "signal", "socket", "term", "user", "poll"] }
+sha2 = "=0.11.0"
+thiserror = "=2.0.21"
+tokio = { version = "=1.53.2", features = ["macros", "rt-multi-thread", "signal", "io-util", "process", "time", "sync"] }
+tracing = "=0.1.44"
+tracing-subscriber = { version = "=0.3.23", features = ["env-filter"] }
+zbus = { version = "=5.19.0", features = ["tokio"] }
+
+[dev-dependencies]
+proptest = "=1.12.0"
+tempfile = "=3.27.0"

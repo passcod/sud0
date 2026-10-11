@@ -1,0 +1,11 @@
+//! Shared protocol and presentation primitives for sud0.
+
+pub mod constants;
+pub mod error;
+pub mod prompt;
+pub mod protocol;
+pub mod request;
+
+pub use error::{DescriptionError, ProtocolError, RequestError};
+pub use prompt::{HumanDescription, format_command, format_prompt};
+pub use request::{EnvironmentVariable, FrozenRequest, IoMode, RequestOptions};
