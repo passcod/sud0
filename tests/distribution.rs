@@ -1,8 +1,8 @@
 use std::fs;
 
 use sud0::constants::{
-    BROKER_BUS_NAME, BROKER_INVOCATION_INTERFACE, BROKER_MANAGER_INTERFACE,
-    BROKER_MANAGER_PATH, EXECUTOR_PATH, POLKIT_RUN_ACTION,
+    BROKER_BUS_NAME, BROKER_INVOCATION_INTERFACE, BROKER_MANAGER_INTERFACE, BROKER_MANAGER_PATH,
+    EXECUTOR_PATH, POLKIT_RUN_ACTION,
 };
 use sud0::{InvocationStatusWire, RunWire, StdioWire, WindowSize};
 use zbus::zvariant::Type;
@@ -44,6 +44,7 @@ fn introspection_fixture_matches_exported_types() {
         WindowSize::SIGNATURE,
         InvocationStatusWire::SIGNATURE,
     ] {
-        assert!(xml.contains(signature.as_str()), "missing signature {signature}");
+        let signature = signature.to_string();
+        assert!(xml.contains(&signature), "missing signature {signature}");
     }
 }
