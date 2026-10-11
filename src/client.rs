@@ -1,4 +1,6 @@
 use std::os::fd::{AsFd, OwnedFd};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use thiserror::Error;
@@ -47,7 +49,7 @@ pub struct BrokerClient {
 
 pub struct Invocation {
     proxy: InvocationProxy<'static>,
-    cleanup_needed: bool,
+    cleanup_needed: Arc<AtomicBool>,
 }
 
 struct AgentAttempt {
@@ -144,16 +146,15 @@ impl BrokerClient {
                 return Err(ClientError::Proxy(error));
             }
         };
-        let mut invocation = Invocation {
+        let invocation = Invocation {
             proxy,
-            cleanup_needed: true,
+            cleanup_needed: Arc::new(AtomicBool::new(true)),
         };
         let startup = invocation.wait_for_startup().await;
         stop_agent(agent.agent.take()).await;
         match startup {
             Ok(Startup::Running) => Ok((invocation, Startup::Running)),
             Ok(Startup::Terminal(status)) => {
-                invocation.cleanup_needed = false;
                 if let Some(error) = agent.error {
                     if status.phase == 4 && status.error_category == "authorization" {
                         return Err(ClientError::AuthenticationAgent(error));
@@ -183,12 +184,14 @@ impl Invocation {
         }
     }
 
-    pub async fn wait(&mut self) -> Result<InvocationStatusWire, ClientError> {
-        let result = self.proxy.wait().await.map_err(ClientError::Broker);
-        if result.is_ok() {
-            self.cleanup_needed = false;
-        }
-        result
+    /// Waits for authoritative broker completion.
+    ///
+    /// The broker's `Wait` operation also marks the invocation released and schedules object
+    /// removal, so a successful return disarms client-side cleanup.
+    pub async fn wait(&self) -> Result<InvocationStatusWire, ClientError> {
+        let status = self.proxy.wait().await.map_err(ClientError::Broker)?;
+        self.cleanup_needed.store(false, Ordering::Release);
+        Ok(status)
     }
 
     pub async fn cancel(&self) {
@@ -210,31 +213,27 @@ impl Invocation {
             .map_err(ClientError::Broker)
     }
 
-    pub async fn release(&mut self) {
-        let _ = self.proxy.release().await;
-        self.cleanup_needed = false;
+    pub async fn release(&self) -> Result<(), ClientError> {
+        self.proxy.release().await.map_err(ClientError::Broker)?;
+        self.cleanup_needed.store(false, Ordering::Release);
+        Ok(())
     }
 
-    pub async fn cancel_and_release(&mut self) {
+    pub async fn cancel_and_release(&self) {
         self.cancel().await;
-        if let Ok(status) = self.wait().await {
-            let _ = exit_code(&status);
-        }
-        self.release().await;
+        let _ = self.wait().await;
     }
 }
 
 impl Drop for Invocation {
     fn drop(&mut self) {
-        if !self.cleanup_needed {
+        if !self.cleanup_needed.swap(false, Ordering::AcqRel) {
             return;
         }
         let proxy = self.proxy.clone();
         tokio::spawn(async move {
             let _ = proxy.cancel().await;
-            if proxy.wait().await.is_ok() {
-                let _ = proxy.release().await;
-            }
+            let _ = proxy.wait().await;
         });
     }
 }
@@ -244,10 +243,13 @@ pub fn exit_code(status: &InvocationStatusWire) -> Result<u8, ClientError> {
         return Err(ClientError::InvalidStatus);
     }
     if status.phase == PHASE_COMPLETE && status.outcome == OUTCOME_EXITED {
-        return Ok(status.status.clamp(0, 255) as u8);
+        return u8::try_from(status.status).map_err(|_| ClientError::InvalidStatus);
     }
     if status.phase == PHASE_COMPLETE && status.outcome == OUTCOME_SIGNALED {
-        return Ok((128_i32.saturating_add(status.signal)).clamp(0, 255) as u8);
+        if !(1..=127).contains(&status.signal) {
+            return Err(ClientError::InvalidStatus);
+        }
+        return Ok((128 + status.signal) as u8);
     }
     match status.phase {
         5 => Err(ClientError::Cancelled),

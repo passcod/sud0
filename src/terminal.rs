@@ -53,6 +53,13 @@ pub struct Pump {
     shutdown: watch::Sender<bool>,
     input: JoinHandle<io::Result<()>>,
     output: JoinHandle<io::Result<()>>,
+    input_joined: bool,
+    output_joined: bool,
+}
+
+pub enum PumpEvent {
+    Input(Result<(), TerminalError>),
+    Output(Result<(), TerminalError>),
 }
 
 impl TerminalGuard {
@@ -132,6 +139,8 @@ impl Pump {
             shutdown,
             input: input_task,
             output: output_task,
+            input_joined: false,
+            output_joined: false,
         })
     }
 
@@ -148,17 +157,43 @@ impl Pump {
     }
 
     pub async fn join_input(&mut self) -> Result<(), TerminalError> {
-        (&mut self.input)
+        let result = (&mut self.input)
             .await
             .map_err(TerminalError::Task)?
-            .map_err(TerminalError::Input)
+            .map_err(TerminalError::Input);
+        self.input_joined = true;
+        result
     }
 
     pub async fn join_output(&mut self) -> Result<(), TerminalError> {
-        (&mut self.output)
+        let result = (&mut self.output)
             .await
             .map_err(TerminalError::Task)?
-            .map_err(TerminalError::Output)
+            .map_err(TerminalError::Output);
+        self.output_joined = true;
+        result
+    }
+
+    pub async fn next_event(&mut self) -> PumpEvent {
+        match (self.input_joined, self.output_joined) {
+            (false, false) => tokio::select! {
+                result = &mut self.input => {
+                    self.input_joined = true;
+                    PumpEvent::Input(
+                        result.map_err(TerminalError::Task).and_then(|value| value.map_err(TerminalError::Input))
+                    )
+                }
+                result = &mut self.output => {
+                    self.output_joined = true;
+                    PumpEvent::Output(
+                        result.map_err(TerminalError::Task).and_then(|value| value.map_err(TerminalError::Output))
+                    )
+                }
+            },
+            (false, true) => PumpEvent::Input(self.join_input().await),
+            (true, false) => PumpEvent::Output(self.join_output().await),
+            (true, true) => std::future::pending().await,
+        }
     }
 
     pub async fn finish(mut self) -> Result<(), TerminalError> {
@@ -184,10 +219,15 @@ pub fn window_size(fd: BorrowedFd<'_>) -> Result<WindowSize, TerminalError> {
     Ok(size)
 }
 
-pub fn suspend_process(guard: &mut TerminalGuard) -> Result<(), TerminalError> {
-    guard.restore()?;
-    let _ = kill(Pid::this(), Signal::SIGSTOP);
-    guard.reenter()
+pub fn suspend_process(guard: Option<&mut TerminalGuard>) -> Result<(), TerminalError> {
+    if let Some(guard) = guard {
+        guard.restore()?;
+        let _ = kill(Pid::this(), Signal::SIGSTOP);
+        guard.reenter()
+    } else {
+        let _ = kill(Pid::this(), Signal::SIGSTOP);
+        Ok(())
+    }
 }
 
 fn reopen_descriptor(

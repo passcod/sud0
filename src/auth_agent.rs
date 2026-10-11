@@ -128,8 +128,16 @@ async fn terminate_and_reap(child: &mut Child) {
 
 impl Drop for AuthenticationAgent {
     fn drop(&mut self) {
-        if let Some(id) = self.child.as_ref().and_then(Child::id) {
+        let Some(mut child) = self.child.take() else {
+            return;
+        };
+        if let Some(id) = child.id() {
             let _ = kill(Pid::from_raw(id as i32), Signal::SIGTERM);
+        }
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let _ = child.wait().await;
+            });
         }
     }
 }
