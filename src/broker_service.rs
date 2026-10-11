@@ -283,13 +283,19 @@ impl InvocationObject {
 #[derive(Debug, Clone)]
 pub struct BrokerManager {
     connection: Connection,
+    launcher: SystemdLauncher,
     shutdown: watch::Receiver<bool>,
 }
 
 impl BrokerManager {
-    pub const fn new(connection: Connection, shutdown: watch::Receiver<bool>) -> Self {
+    pub const fn new(
+        connection: Connection,
+        launcher: SystemdLauncher,
+        shutdown: watch::Receiver<bool>,
+    ) -> Self {
         Self {
             connection,
+            launcher,
             shutdown,
         }
     }
@@ -331,9 +337,19 @@ impl BrokerManager {
             Some((self.connection.clone(), path.clone())),
         );
         let connection = self.connection.clone();
+        let launcher = self.launcher.clone();
         let shutdown = self.shutdown.clone();
         tokio::spawn(async move {
-            run_pipeline(connection, caller, prepared, shared, cancellation, shutdown).await;
+            run_pipeline(
+                connection,
+                launcher,
+                caller,
+                prepared,
+                shared,
+                cancellation,
+                shutdown,
+            )
+            .await;
         });
         Ok(path)
     }
@@ -373,6 +389,7 @@ impl BrokerManager {
 
 async fn run_pipeline(
     connection: Connection,
+    launcher: SystemdLauncher,
     caller: CallerIdentity,
     prepared: PreparedRequest,
     shared: Arc<SharedInvocation>,
@@ -459,7 +476,6 @@ async fn run_pipeline(
 
     shared.update(InvocationStatusWire::phase(PHASE_STARTING));
     let (request, cwd, io, _) = prepared.into_launch_parts();
-    let launcher = SystemdLauncher::new(connection);
     let started = match launcher
         .launch(
             LaunchRequest::new(request, cwd, io),

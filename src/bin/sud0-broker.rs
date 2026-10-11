@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 
-use sud0::BrokerManager;
 use sud0::constants::{BROKER_BUS_NAME, BROKER_MANAGER_PATH};
+use sud0::{BrokerManager, SystemdLauncher};
 use tokio::sync::watch;
 use tracing::{error, info};
 use zbus::connection::Builder;
@@ -33,11 +33,12 @@ async fn run() -> Result<(), BrokerError> {
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let connection = Builder::system()?.name(BROKER_BUS_NAME)?.build().await?;
+    let launcher = SystemdLauncher::new(connection.clone()).await?;
     connection
         .object_server()
         .at(
             BROKER_MANAGER_PATH,
-            BrokerManager::new(connection.clone(), shutdown_rx),
+            BrokerManager::new(connection.clone(), launcher, shutdown_rx),
         )
         .await?;
 
@@ -69,6 +70,8 @@ enum BrokerError {
     NotRoot,
     #[error("D-Bus broker setup failed")]
     ZBus(#[from] zbus::Error),
+    #[error("systemd launcher setup failed")]
+    Launcher(#[from] sud0::LaunchError),
     #[error("failed to install shutdown signal handlers")]
     Signal(#[from] std::io::Error),
 }

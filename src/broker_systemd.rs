@@ -263,8 +263,16 @@ pub struct SystemdLauncher {
 }
 
 impl SystemdLauncher {
-    pub const fn new(connection: zbus::Connection) -> Self {
-        Self { connection }
+    /// Creates a launcher and subscribes this connection to systemd manager signals exactly once.
+    ///
+    /// systemd tracks subscriptions by D-Bus sender and rejects duplicate `Subscribe` calls, so the
+    /// launcher must be constructed once for the broker connection and then cloned for requests.
+    pub async fn new(connection: zbus::Connection) -> Result<Self, LaunchError> {
+        let manager = SystemdManagerProxy::new(&connection)
+            .await
+            .map_err(LaunchError::Systemd)?;
+        manager.subscribe().await.map_err(LaunchError::Systemd)?;
+        Ok(Self { connection })
     }
 
     pub async fn launch(
@@ -284,7 +292,6 @@ impl SystemdLauncher {
             .receive_job_removed()
             .await
             .map_err(LaunchError::Systemd)?;
-        manager.subscribe().await.map_err(LaunchError::Systemd)?;
 
         let properties = transient_properties(&prepared);
         let job = manager
