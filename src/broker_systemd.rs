@@ -406,12 +406,16 @@ async fn track_completion_inner(
     mut cancellation: watch::Receiver<Option<CancellationReason>>,
 ) -> Result<CommandOutcome, LaunchError> {
     let unit = SystemdUnitProxy::builder(connection)
+        .destination("org.freedesktop.systemd1")
+        .map_err(LaunchError::Systemd)?
         .path(unit_path.clone())
         .map_err(LaunchError::Systemd)?
         .build()
         .await
         .map_err(LaunchError::Systemd)?;
     let service = SystemdServiceProxy::builder(connection)
+        .destination("org.freedesktop.systemd1")
+        .map_err(LaunchError::Systemd)?
         .path(unit_path)
         .map_err(LaunchError::Systemd)?
         .build()

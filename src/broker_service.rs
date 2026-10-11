@@ -15,8 +15,8 @@ use zbus::{Connection, DBusError, interface};
 use crate::broker_auth::{ZbusAuthority, authorize};
 use crate::{
     AuthorizationOutcome, AuthorizationRequest, CallerIdentity, Cancellation, CancellationReason,
-    CommandOutcome, LaunchRequest, PreparedRequest, RunWire, SystemdLauncher, WindowSize,
-    set_pty_window_size,
+    CommandOutcome, LaunchError, LaunchRequest, PreparedRequest, RunWire, SystemdLauncher,
+    WindowSize, set_pty_window_size,
 };
 
 const PHASE_AUTHORIZING: u8 = 0;
@@ -700,10 +700,27 @@ async fn run_pipeline(
     shared.update(InvocationStatusWire::phase(PHASE_RUNNING));
     match completion.wait().await {
         Ok(outcome) => shared.update(InvocationStatusWire::from_outcome(outcome)),
-        Err(_) => shared.update(InvocationStatusWire::terminal_phase(
-            PHASE_FAILED,
-            "tracking",
-        )),
+        Err(LaunchError::Systemd(error)) => {
+            tracing::error!(error = %error, "failed to track transient command");
+            shared.update(InvocationStatusWire::terminal_phase(
+                PHASE_FAILED,
+                "tracking-systemd",
+            ));
+        }
+        Err(LaunchError::Cleanup(error)) => {
+            tracing::error!(error = %error, "failed to clean up transient command");
+            shared.update(InvocationStatusWire::terminal_phase(
+                PHASE_FAILED,
+                "tracking-cleanup",
+            ));
+        }
+        Err(error) => {
+            tracing::error!(error = %error, "failed to track transient command");
+            shared.update(InvocationStatusWire::terminal_phase(
+                PHASE_FAILED,
+                "tracking",
+            ));
+        }
     }
 }
 
