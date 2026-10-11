@@ -16,6 +16,7 @@ pub mod prompt;
 pub mod protocol;
 pub mod request;
 pub mod sealed_request;
+pub mod terminal;
 
 pub use broker_auth::{
     AuthorizationError, AuthorizationOutcome, AuthorizationRequest, CallerIdentity, Cancellation,
