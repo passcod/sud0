@@ -25,6 +25,7 @@ path = "src/bin/sud0-exec.rs"
 [dependencies]
 clap = { version = "=4.6.7", features = ["derive"] }
 futures-util = "=0.3.34"
+getrandom = "=0.4.3"
 hex = "=0.4.3"
 libc = "=0.2.190"
 nix = { version = "=0.31.3", features = ["fs", "process", "signal", "socket", "term", "user", "poll"] }

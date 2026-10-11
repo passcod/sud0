@@ -22,6 +22,19 @@ pub const ROOT_SHELL: &str = "/bin/bash";
 /// Installed executor path used by transient services.
 pub const EXECUTOR_PATH: &str = "/usr/lib/sud0/sud0-exec";
 
+/// Well-known system-bus name owned by the broker.
+pub const BROKER_BUS_NAME: &str = "io.github.passcod.sud0";
+/// Stable object path exposing the broker manager.
+pub const BROKER_MANAGER_PATH: &str = "/io/github/passcod/sud0";
+/// Public manager interface used to create and validate invocations.
+pub const BROKER_MANAGER_INTERFACE: &str = "io.github.passcod.sud0.Manager1";
+/// Interface implemented by owner-bound dynamic invocation objects.
+pub const BROKER_INVOCATION_INTERFACE: &str = "io.github.passcod.sud0.Invocation1";
+/// The only PolicyKit action the broker may request.
+pub const POLKIT_RUN_ACTION: &str = "io.github.passcod.sud0.run";
+/// Fixed non-sensitive description for transient command services.
+pub const TRANSIENT_UNIT_DESCRIPTION: &str = "sud0 privileged command";
+
 /// Environment names supplied by the executor rather than by a request.
 pub const BASELINE_ENVIRONMENT_NAMES: &[&[u8]] = &[b"PATH", b"HOME", b"USER", b"LOGNAME", b"SHELL"];
 /// systemd activation names that must not survive into or be replaced by a command request.
