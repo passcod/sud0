@@ -161,7 +161,11 @@ impl BrokerClient {
                 {
                     return Err(ClientError::AuthenticationAgent(error));
                 }
-                Ok((invocation, Startup::Terminal(status)))
+                if should_drain_completed_pty(mode, &status) {
+                    Ok((invocation, Startup::Running))
+                } else {
+                    Ok((invocation, Startup::Terminal(status)))
+                }
             }
             Err(error) => {
                 invocation.cancel_and_release().await;
@@ -169,6 +173,10 @@ impl BrokerClient {
             }
         }
     }
+}
+
+fn should_drain_completed_pty(mode: IoMode, status: &InvocationStatusWire) -> bool {
+    mode == IoMode::Pty && status.phase == PHASE_COMPLETE
 }
 
 impl Invocation {
@@ -320,6 +328,17 @@ mod tests {
         assert!(matches!(
             exit_code(&status(5, 0, 0, 0)),
             Err(ClientError::Cancelled)
+        ));
+    }
+
+    #[test]
+    fn completed_pty_is_drained_after_startup_phase_race() {
+        let complete = status(PHASE_COMPLETE, OUTCOME_EXITED, 0, 0);
+        assert!(should_drain_completed_pty(IoMode::Pty, &complete));
+        assert!(!should_drain_completed_pty(IoMode::Pipe, &complete));
+        assert!(!should_drain_completed_pty(
+            IoMode::Pty,
+            &status(4, 0, 0, 0)
         ));
     }
 
