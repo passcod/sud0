@@ -31,7 +31,11 @@ pub struct Cli {
     pub non_interactive: bool,
 
     /// Validate or refresh authorization without running a command
-    #[arg(short = 'v', long)]
+    #[arg(
+        short = 'v',
+        long,
+        conflicts_with_all = ["description", "chdir", "setenv", "pty", "pipe", "command"]
+    )]
     pub validate: bool,
 
     /// Command and arguments to run; defaults to /bin/bash

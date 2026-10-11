@@ -1,10 +1,12 @@
 //! Shared protocol and presentation primitives for sud0.
 
+pub mod auth_agent;
 pub mod broker_auth;
 pub mod broker_service;
 pub mod broker_systemd;
 pub mod broker_wire;
 pub mod cli;
+pub mod client;
 pub mod client_request;
 pub mod constants;
 pub mod cwd;
