@@ -26,9 +26,10 @@ Polkit's retained grant is keyed by action and subject equivalence, not by comma
 
 ## Request and prompt binding
 
-Command arguments, the working directory, and environment values are Unix byte strings.
+Command arguments, working-directory display text, and environment values are Unix byte strings.
 The protocol MUST preserve non-UTF-8 values and MUST reject embedded NUL bytes.
 The broker MUST apply explicit count and byte limits before authorization and before allocation during decoding.
+The working-directory descriptor, not its display text, is the authority used for execution.
 
 The broker freezes every accepted request before authorization.
 The polkit prompt and executor payload MUST be derived from that same immutable request.
@@ -50,10 +51,14 @@ The authentication agent receives the displayed text, and a locally configured v
 
 ## Execution transaction
 
+For every request, the client opens the invoking working directory before authorization and passes that directory descriptor to the broker.
+`-D/--chdir` instead opens the requested target before authorization.
+This preserves the invoking directory by default and binds execution to the opened object even if its pathname is subsequently renamed or replaced.
+
 For every request, the broker:
 
-1. Copies request bytes and received descriptors into broker-owned state.
-2. Validates structure, limits, NUL exclusion, environment names, and option combinations.
+1. Copies request bytes and the opened working-directory descriptor into broker-owned state.
+2. Validates structure, limits, NUL exclusion, environment names, option combinations, and the directory descriptor.
 3. Freezes the request and creates its prompt rendering.
 4. Calls PolicyKit1 for the actual caller and `io.github.passcod.sud0.run`.
 5. Stops without creating a service on denial, dismissal, cancellation, malformed input, or caller disappearance.
@@ -61,16 +66,16 @@ For every request, the broker:
 7. Encodes the same frozen execution request in a memfd and seals it against writes, growth, shrinkage, and further seal changes.
 8. Allocates a PTY when requested, or duplicates the caller's standard descriptors for pipe mode.
 9. Calls systemd's `StartTransientUnit` directly.
-10. Starts only `/usr/lib/sud0/sud0-exec`, passing the sealed request as a named extra descriptor.
+10. Starts only `/usr/lib/sud0/sud0-exec`, passing the sealed request and opened working directory as two fixed, named extra descriptors.
 11. Tracks startup, exit status, signals, ownership, cancellation, and cleanup.
 
 The broker MUST NOT invoke `systemd-run`, accept arbitrary systemd properties, or include argv in unit names, descriptions, or normal diagnostics.
 Invocation operations MUST be available only to the unique bus name that created them.
 If that owner disappears, pending authorization MUST be cancelled and a launched transient command MUST be stopped.
 
-The executor requires effective UID 0 and exactly the expected sealed descriptor.
-It verifies the descriptor, seals, protocol, limits, and request digest again.
-It constructs a minimal root environment, applies the raw-byte working directory, resolves bare commands only against a fixed root-safe `PATH`, closes unrelated descriptors, and directly executes argv.
+The executor requires real, effective, and saved UID 0 and exactly the expected sealed-request and working-directory descriptors.
+It verifies the request descriptor, seals, protocol, limits, and request digest again, and verifies that the working-directory descriptor refers to a directory.
+It constructs a minimal root environment, changes directory with `fchdir` on the opened object, resolves bare commands only against a fixed root-safe `PATH`, closes unrelated descriptors, and directly executes argv.
 It MUST NOT invoke a shell, expand variables, or interpret prompt quoting.
 
 ## Terminal behavior
