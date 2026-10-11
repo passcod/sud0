@@ -1,4 +1,4 @@
-use std::os::fd::BorrowedFd;
+use std::os::fd::{AsFd, OwnedFd};
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -25,6 +25,8 @@ enum AppError {
     Signal(&'static str, std::io::Error),
     #[error("PTY mode requires at least one local terminal descriptor")]
     NoLocalTerminal,
+    #[error("failed to duplicate local terminal descriptor: {0}")]
+    DuplicateTerminal(rustix::io::Errno),
 }
 
 struct Signals {
@@ -69,14 +71,14 @@ async fn run(cli: Cli) -> Result<u8, AppError> {
 
     let tty = stdio_are_ttys();
     let mode = choose_io_mode(cli.pty, cli.pipe, tty);
-    let terminal_fd = tty
-        .iter()
-        .position(|is_tty| *is_tty)
-        .map(|index| index as i32);
-    let initial_size = match mode {
-        IoMode::Pty => Some(window_size(terminal_descriptor(terminal_fd)?)?),
+    let terminal = match mode {
+        IoMode::Pty => Some(duplicate_terminal(&tty)?),
         IoMode::Pipe => None,
     };
+    let initial_size = terminal
+        .as_ref()
+        .map(|terminal| window_size(terminal.as_fd()))
+        .transpose()?;
     let prepared = PreparedClientRequest::from_cli(&cli, mode)?;
     let (invocation, startup) = client
         .run(prepared, mode, initial_size, allow_interaction)
@@ -88,7 +90,9 @@ async fn run(cli: Cli) -> Result<u8, AppError> {
         }
         Startup::Running => match mode {
             IoMode::Pipe => finish_pipe(&invocation).await,
-            IoMode::Pty => finish_pty(&invocation, terminal_fd).await,
+            IoMode::Pty => {
+                finish_pty(&invocation, terminal.expect("PTY mode has a terminal")).await
+            }
         },
     }
 }
@@ -106,12 +110,10 @@ async fn finish_pipe(invocation: &Invocation) -> Result<u8, AppError> {
     exit_code(&status).map_err(AppError::Client)
 }
 
-async fn finish_pty(invocation: &Invocation, terminal_fd: Option<i32>) -> Result<u8, AppError> {
+async fn finish_pty(invocation: &Invocation, terminal_fd: OwnedFd) -> Result<u8, AppError> {
     let master = invocation.take_pty().await?;
     let mut signals = Signals::new()?;
-    let mut terminal = terminal_fd
-        .map(|_| TerminalGuard::enter(terminal_descriptor(terminal_fd).expect("known terminal fd")))
-        .transpose()?;
+    let mut terminal = TerminalGuard::enter(terminal_fd.as_fd())?;
     let mut pump = Pump::start(master)?;
     let mut status: Option<InvocationStatusWire> = None;
     let mut input_done = false;
@@ -151,11 +153,11 @@ async fn finish_pty(invocation: &Invocation, terminal_fd: Option<i32>) -> Result
             }
             event = signals.next_event() => match event {
                 SignalEvent::WindowChange => {
-                    if let Ok(size) = window_size(terminal_descriptor(terminal_fd).expect("PTY mode has a local terminal")) {
-                        if let Err(error) = invocation.set_window_size(size).await {
-                            forwarding_error = Some(AppError::Client(error));
-                            invocation.cancel().await;
-                        }
+                    if let Ok(size) = window_size(terminal_fd.as_fd())
+                        && let Err(error) = invocation.set_window_size(size).await
+                    {
+                        forwarding_error = Some(AppError::Client(error));
+                        invocation.cancel().await;
                     }
                 }
                 SignalEvent::Terminate(caught) => {
@@ -166,16 +168,14 @@ async fn finish_pty(invocation: &Invocation, terminal_fd: Option<i32>) -> Result
                     }
                 }
                 SignalEvent::Suspend => {
-                    suspend_process(terminal.as_mut())?;
-                    if let Ok(size) = window_size(terminal_descriptor(terminal_fd).expect("PTY mode has a local terminal")) {
+                    suspend_process(Some(&mut terminal))?;
+                    if let Ok(size) = window_size(terminal_fd.as_fd()) {
                         invocation.set_window_size(size).await?;
                     }
                 }
                 SignalEvent::Continue => {
-                    if let Some(terminal) = terminal.as_mut() {
-                        terminal.reenter()?;
-                    }
-                    if let Ok(size) = window_size(terminal_descriptor(terminal_fd).expect("PTY mode has a local terminal")) {
+                    terminal.reenter()?;
+                    if let Ok(size) = window_size(terminal_fd.as_fd()) {
                         invocation.set_window_size(size).await?;
                     }
                 }
@@ -184,19 +184,13 @@ async fn finish_pty(invocation: &Invocation, terminal_fd: Option<i32>) -> Result
     }
 
     pump.stop_input();
-    if !input_done {
-        if let Err(error) = pump.join_input().await {
-            forwarding_error.get_or_insert(AppError::Terminal(error));
-        }
+    if !input_done && let Err(error) = pump.join_input().await {
+        forwarding_error.get_or_insert(AppError::Terminal(error));
     }
-    if !output_done {
-        if let Err(error) = pump.join_output().await {
-            forwarding_error.get_or_insert(AppError::Terminal(error));
-        }
+    if !output_done && let Err(error) = pump.join_output().await {
+        forwarding_error.get_or_insert(AppError::Terminal(error));
     }
-    if let Some(terminal) = terminal.as_mut() {
-        terminal.restore()?;
-    }
+    terminal.restore()?;
 
     let status = match status {
         Some(status) => status,
@@ -250,12 +244,18 @@ fn signal_named(kind: SignalKind, name: &'static str) -> Result<Signal, AppError
     signal(kind).map_err(|error| AppError::Signal(name, error))
 }
 
-fn terminal_descriptor(descriptor: Option<i32>) -> Result<BorrowedFd<'static>, AppError> {
-    let descriptor = descriptor.ok_or(AppError::NoLocalTerminal)?;
-    // SAFETY: `descriptor` is restricted to 0, 1, or 2 by its only producer, and the process owns
-    // those standard descriptors for the duration of `run`. This borrow never closes the fd and is
-    // used only while the process remains alive.
-    Ok(unsafe { BorrowedFd::borrow_raw(descriptor) })
+fn duplicate_terminal(tty: &[bool; 3]) -> Result<OwnedFd, AppError> {
+    let descriptor = tty
+        .iter()
+        .position(|is_tty| *is_tty)
+        .ok_or(AppError::NoLocalTerminal)?;
+    match descriptor {
+        0 => rustix::io::fcntl_dupfd_cloexec(std::io::stdin(), 3),
+        1 => rustix::io::fcntl_dupfd_cloexec(std::io::stdout(), 3),
+        2 => rustix::io::fcntl_dupfd_cloexec(std::io::stderr(), 3),
+        _ => unreachable!("terminal index comes from a three-element array"),
+    }
+    .map_err(AppError::DuplicateTerminal)
 }
 
 #[cfg(test)]

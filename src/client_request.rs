@@ -13,6 +13,8 @@ use crate::{
     WorkingDirectoryFd,
 };
 
+type Environment = Vec<(Vec<u8>, Vec<u8>)>;
+
 #[derive(Debug)]
 pub struct PreparedClientRequest {
     pub request: FrozenRequest,
@@ -96,7 +98,7 @@ fn command_argv(command: &[OsString]) -> Vec<Vec<u8>> {
     }
 }
 
-fn parse_environment(values: &[OsString]) -> Result<Vec<(Vec<u8>, Vec<u8>)>, ClientRequestError> {
+fn parse_environment(values: &[OsString]) -> Result<Environment, ClientRequestError> {
     values
         .iter()
         .map(|value| {

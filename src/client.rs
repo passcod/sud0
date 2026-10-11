@@ -155,10 +155,11 @@ impl BrokerClient {
         match startup {
             Ok(Startup::Running) => Ok((invocation, Startup::Running)),
             Ok(Startup::Terminal(status)) => {
-                if let Some(error) = agent.error {
-                    if status.phase == 4 && status.error_category == "authorization" {
-                        return Err(ClientError::AuthenticationAgent(error));
-                    }
+                if let Some(error) = agent.error
+                    && status.phase == 4
+                    && status.error_category == "authorization"
+                {
+                    return Err(ClientError::AuthenticationAgent(error));
                 }
                 Ok((invocation, Startup::Terminal(status)))
             }
