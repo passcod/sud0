@@ -1,0 +1,35 @@
+[Unit]
+Description=sud0 privilege broker
+Documentation=man:sud0(1) https://github.com/passcod/sud0
+
+[Service]
+Type=dbus
+BusName=io.github.passcod.sud0
+ExecStart=/usr/lib/sud0/sud0-broker
+User=root
+UMask=0077
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+
+PrivateDevices=yes
+PrivateIPC=yes
+PrivateNetwork=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectProc=invisible
+ProtectSystem=strict
+RestrictNamespaces=yes
