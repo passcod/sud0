@@ -1,6 +1,8 @@
 //! Shared protocol and presentation primitives for sud0.
 
 pub mod broker_auth;
+pub mod broker_service;
+pub mod broker_systemd;
 pub mod broker_wire;
 pub mod constants;
 pub mod cwd;
@@ -14,6 +16,13 @@ pub mod sealed_request;
 pub use broker_auth::{
     AuthorizationError, AuthorizationOutcome, AuthorizationRequest, CallerIdentity, Cancellation,
     CancellationReason,
+};
+pub use broker_service::{
+    BrokerDbusError, BrokerManager, InvocationProxy, InvocationStatusWire, ManagerProxy,
+};
+pub use broker_systemd::{
+    CommandOutcome, LaunchError, LaunchRequest, StartedUnit, SystemdLauncher, UnitCompletion,
+    map_service_outcome, set_pty_window_size,
 };
 pub use broker_wire::{PrepareError, PreparedIo, PreparedRequest, RunWire, StdioWire, WindowSize};
 pub use cwd::{WorkingDirectoryError, WorkingDirectoryFd};

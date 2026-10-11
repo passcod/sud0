@@ -224,7 +224,8 @@ pub(crate) async fn authorize<A: Authority>(
         }
         result = &mut check => {
             let result = result?;
-            if let Some(reason) = *cancellation.borrow() {
+            let cancellation_reason = *cancellation.borrow();
+            if let Some(reason) = cancellation_reason {
                 let _ = authority.cancel(request.cancellation_id()).await;
                 return Ok(AuthorizationOutcome::Cancelled(reason));
             }

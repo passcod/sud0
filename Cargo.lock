@@ -1005,6 +1005,7 @@ dependencies = [
  "libc",
  "nix",
  "proptest",
+ "rustix",
  "serde",
  "sha2",
  "tempfile",
