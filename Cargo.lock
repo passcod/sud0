@@ -988,6 +988,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "hex",
+ "libc",
  "nix",
  "proptest",
  "sha2",

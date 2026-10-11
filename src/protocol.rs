@@ -319,7 +319,7 @@ mod tests {
     fn request() -> FrozenRequest {
         FrozenRequest::new(
             vec![b"/usr/bin/printf".to_vec(), vec![b'%', b's', 0xff]],
-            Some(vec![b'/', b't', b'm', b'p', 0xfe]),
+            Some(vec![b'/', b't', b'm', b'p', b'/', 0xfe]),
             vec![
                 (b"LANG".to_vec(), b"C.UTF-8".to_vec()),
                 (b"RAW".to_vec(), vec![0xff, b'x']),
@@ -508,7 +508,7 @@ mod tests {
         fn arbitrary_valid_requests_round_trip(
             program in safe_bytes(32).prop_filter("program is nonempty", |bytes| !bytes.is_empty()),
             arguments in vec(safe_bytes(32), 0..8),
-            cwd in prop::option::of(safe_bytes(32).prop_filter("cwd is nonempty", |bytes| !bytes.is_empty())),
+            cwd_suffix in prop::option::of(safe_bytes(31)),
             values in vec(safe_bytes(32), 0..8),
             pty in any::<bool>(),
         ) {
@@ -519,6 +519,11 @@ mod tests {
                 .enumerate()
                 .map(|(index, value)| (format!("VAR_{index}").into_bytes(), value))
                 .collect();
+            let cwd = cwd_suffix.map(|suffix| {
+                let mut cwd = vec![b'/'];
+                cwd.extend(suffix);
+                cwd
+            });
             let mode = if pty { IoMode::Pty } else { IoMode::Pipe };
             let request = FrozenRequest::new(
                 argv,

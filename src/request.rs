@@ -3,9 +3,9 @@ use std::collections::HashSet;
 use sha2::{Digest, Sha256};
 
 use crate::constants::{
-    MAX_ARGUMENT_BYTES, MAX_ARGUMENTS, MAX_CWD_BYTES, MAX_ENVIRONMENT_NAME_BYTES,
-    MAX_ENVIRONMENT_VALUE_BYTES, MAX_ENVIRONMENT_VARIABLES, MAX_REQUEST_DATA_BYTES,
-    PROTOCOL_VERSION,
+    ACTIVATION_ENVIRONMENT_NAMES, BASELINE_ENVIRONMENT_NAMES, MAX_ARGUMENT_BYTES, MAX_ARGUMENTS,
+    MAX_CWD_BYTES, MAX_ENVIRONMENT_NAME_BYTES, MAX_ENVIRONMENT_VALUE_BYTES,
+    MAX_ENVIRONMENT_VARIABLES, MAX_REQUEST_DATA_BYTES, PROTOCOL_VERSION,
 };
 use crate::error::RequestError;
 use crate::protocol::encode_payload;
@@ -188,6 +188,9 @@ fn validate_working_directory(working_directory: Option<&[u8]>) -> Result<(), Re
             maximum: MAX_CWD_BYTES,
         });
     }
+    if !working_directory.starts_with(b"/") {
+        return Err(RequestError::RelativeWorkingDirectory);
+    }
     reject_nul(working_directory, "working directory")
 }
 
@@ -205,6 +208,9 @@ fn validate_environment(
     let mut validated = Vec::with_capacity(environment.len());
     for (index, (name, value)) in environment.into_iter().enumerate() {
         validate_environment_name(index, &name)?;
+        if is_protected_environment_name(&name) {
+            return Err(RequestError::ProtectedEnvironmentName { index, name });
+        }
         if !seen.insert(name.clone()) {
             return Err(RequestError::DuplicateEnvironmentName { name });
         }
@@ -249,6 +255,32 @@ fn validate_environment_name(index: usize, name: &[u8]) -> Result<(), RequestErr
         }
     }
     Ok(())
+}
+
+fn is_protected_environment_name(name: &[u8]) -> bool {
+    BASELINE_ENVIRONMENT_NAMES.contains(&name)
+        || ACTIVATION_ENVIRONMENT_NAMES.contains(&name)
+        || name == b"IFS"
+        || name == b"ENV"
+        || name == b"BASH_ENV"
+        || name.starts_with(b"LD_")
+        || name.starts_with(b"GLIBC_TUNABLES")
+        || name.starts_with(b"MALLOC_")
+        || name.starts_with(b"GCONV_")
+        || name.starts_with(b"LOCPATH")
+        || name.starts_with(b"PYTHON")
+        || name.starts_with(b"PERL")
+        || name.starts_with(b"RUBY")
+        || name.starts_with(b"GEM_")
+        || name.starts_with(b"NODE_")
+        || name == b"NODE_PATH"
+        || name.starts_with(b"JAVA_TOOL_OPTIONS")
+        || name.starts_with(b"JDK_JAVA_OPTIONS")
+        || name.starts_with(b"CLASSPATH")
+        || name.starts_with(b"GODEBUG")
+        || name.starts_with(b"RUSTC_")
+        || name.starts_with(b"RUSTDOC_")
+        || name.starts_with(b"CARGO_")
 }
 
 fn validate_total_size(
@@ -351,6 +383,15 @@ mod tests {
             ),
             Err(RequestError::EmptyWorkingDirectory)
         );
+        assert_eq!(
+            FrozenRequest::new(
+                vec![b"true".to_vec()],
+                Some(b"relative".to_vec()),
+                Vec::new(),
+                options()
+            ),
+            Err(RequestError::RelativeWorkingDirectory)
+        );
         assert!(matches!(
             FrozenRequest::new(
                 vec![b"true".to_vec()],
@@ -400,6 +441,43 @@ mod tests {
             ),
             Err(RequestError::DuplicateEnvironmentName { .. })
         ));
+    }
+
+    #[test]
+    fn rejects_protected_environment_names() {
+        for protected in [
+            b"PATH".as_slice(),
+            b"HOME",
+            b"LISTEN_PID",
+            b"LD_PRELOAD",
+            b"GLIBC_TUNABLES",
+            b"PYTHONPATH",
+            b"BASH_ENV",
+            b"NODE_OPTIONS",
+            b"RUSTC_WRAPPER",
+        ] {
+            assert!(matches!(
+                FrozenRequest::new(
+                    vec![b"true".to_vec()],
+                    None,
+                    vec![(protected.to_vec(), b"value".to_vec())],
+                    options()
+                ),
+                Err(RequestError::ProtectedEnvironmentName { .. })
+            ));
+        }
+
+        for allowed in [b"TERM".as_slice(), b"COLORTERM", b"NO_COLOR", b"LANG"] {
+            assert!(
+                FrozenRequest::new(
+                    vec![b"true".to_vec()],
+                    None,
+                    vec![(allowed.to_vec(), b"value".to_vec())],
+                    options()
+                )
+                .is_ok()
+            );
+        }
     }
 
     #[test]

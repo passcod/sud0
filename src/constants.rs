@@ -1,4 +1,26 @@
-//! Limits shared by every protocol participant.
+//! Security contracts and limits shared by every protocol participant.
+
+/// The sole systemd activation descriptor name accepted by `sud0-exec`.
+pub const REQUEST_FD_NAME: &str = "sud0-request";
+/// The descriptor assigned to the first systemd-activated file descriptor.
+pub const REQUEST_FD: i32 = 3;
+
+/// Fixed root command search path; ambient `PATH` is never consulted.
+pub const ROOT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/bin";
+/// Absolute components of [`ROOT_PATH`], in search order.
+pub const ROOT_PATH_COMPONENTS: &[&[u8]] = &[b"/usr/local/sbin", b"/usr/local/bin", b"/usr/bin"];
+/// Fixed shell used for no-command requests and the root `SHELL` environment value.
+pub const ROOT_SHELL: &str = "/bin/bash";
+/// Installed executor path used by transient services.
+pub const EXECUTOR_PATH: &str = "/usr/lib/sud0/sud0-exec";
+
+/// Environment names supplied by the executor rather than by a request.
+pub const BASELINE_ENVIRONMENT_NAMES: &[&[u8]] = &[b"PATH", b"HOME", b"USER", b"LOGNAME", b"SHELL"];
+/// systemd activation names that must not survive into or be replaced by a command request.
+pub const ACTIVATION_ENVIRONMENT_NAMES: &[&[u8]] =
+    &[b"LISTEN_PID", b"LISTEN_FDS", b"LISTEN_FDNAMES"];
+/// Terminal-related names that are useful when explicitly frozen into a request.
+pub const TERMINAL_ENVIRONMENT_NAMES: &[&[u8]] = &[b"TERM", b"COLORTERM", b"NO_COLOR"];
 
 /// Wire-format magic, including a trailing byte that cannot occur in a text label.
 pub const PROTOCOL_MAGIC: &[u8; 8] = b"SUD0FRZ\0";

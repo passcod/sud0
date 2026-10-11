@@ -19,6 +19,8 @@ pub enum RequestError {
     EmbeddedNul { field: &'static str },
     #[error("working directory must not be empty")]
     EmptyWorkingDirectory,
+    #[error("working directory must be an absolute path")]
+    RelativeWorkingDirectory,
     #[error("working directory has {actual} bytes; the maximum is {maximum}")]
     WorkingDirectoryTooLong { actual: usize, maximum: usize },
     #[error("request has {actual} environment variables; the maximum is {maximum}")]
@@ -39,6 +41,8 @@ pub enum RequestError {
     },
     #[error("environment variable name {name:?} occurs more than once")]
     DuplicateEnvironmentName { name: Vec<u8> },
+    #[error("environment variable {index} uses protected name {name:?}")]
+    ProtectedEnvironmentName { index: usize, name: Vec<u8> },
     #[error("environment variable {index} value has {actual} bytes; the maximum is {maximum}")]
     EnvironmentValueTooLong {
         index: usize,
