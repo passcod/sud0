@@ -38,22 +38,22 @@ trait PolicyKitAuthority {
 pub struct CallerIdentity {
     sender: String,
     unix_uid: u32,
-    process_id: u32,
-    process_fd: OwnedFd,
+    authorization_process_id: u32,
+    authorization_process_fd: OwnedFd,
 }
 
 impl CallerIdentity {
     pub(crate) fn from_authenticated_sender(
         sender: String,
         unix_uid: u32,
-        process_id: u32,
-        process_fd: OwnedFd,
+        authorization_process_id: u32,
+        authorization_process_fd: OwnedFd,
     ) -> Self {
         Self {
             sender,
             unix_uid,
-            process_id,
-            process_fd,
+            authorization_process_id,
+            authorization_process_fd,
         }
     }
 
@@ -65,12 +65,12 @@ impl CallerIdentity {
         self.unix_uid
     }
 
-    pub const fn process_id(&self) -> u32 {
-        self.process_id
+    pub const fn authorization_process_id(&self) -> u32 {
+        self.authorization_process_id
     }
 
-    pub fn process_fd(&self) -> &OwnedFd {
-        &self.process_fd
+    pub fn authorization_process_fd(&self) -> &OwnedFd {
+        &self.authorization_process_fd
     }
 }
 
@@ -96,10 +96,10 @@ impl AuthorizationRequest {
         allow_interaction: bool,
     ) -> Result<Self, AuthorizationError> {
         Ok(Self {
-            subject_pid: caller.process_id,
+            subject_pid: caller.authorization_process_id,
             subject_uid: caller.unix_uid,
             subject_pidfd: caller
-                .process_fd
+                .authorization_process_fd
                 .as_fd()
                 .try_clone_to_owned()
                 .map_err(AuthorizationError::DuplicatePidfd)?,
@@ -115,10 +115,10 @@ impl AuthorizationRequest {
         allow_interaction: bool,
     ) -> Result<Self, AuthorizationError> {
         Ok(Self {
-            subject_pid: caller.process_id,
+            subject_pid: caller.authorization_process_id,
             subject_uid: caller.unix_uid,
             subject_pidfd: caller
-                .process_fd
+                .authorization_process_fd
                 .as_fd()
                 .try_clone_to_owned()
                 .map_err(AuthorizationError::DuplicatePidfd)?,

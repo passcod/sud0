@@ -22,7 +22,7 @@ The broker runs as root; the polkit action deliberately has no executable-owner 
 
 The system-bus policy allows only root to own `nz.passcod.sud0`, while ordinary users may send calls to it.
 For each call the broker derives the caller UID, PID, pidfd, and unique bus name from authenticated D-Bus transport credentials.
-It submits that authenticated pidfd-backed process to polkit, enabling native same-terminal process-family retention without accepting caller-supplied identity fields.
+It race-safely identifies and pins that caller's live parent process, then submits the pidfd-backed parent to polkit so sequential sud0 children of one shell share native retention while different process families remain separate.
 The client cannot nominate its polkit subject, UID, PID, transient-unit properties, helper path, or unit name.
 Dynamic invocation objects are bound to their creating unique bus name; owner loss cancels pending or running work.
 

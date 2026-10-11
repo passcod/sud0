@@ -33,11 +33,12 @@ pub enum AuthenticationAgentError {
 }
 
 impl AuthenticationAgent {
-    /// Starts a process-scoped fallback agent and waits until it has registered.
+    /// Starts a fallback agent for the invoking parent process and waits until it has registered.
     ///
-    /// The child is direct so pkttyagent's default parent-process subject is this sud0 process.
-    /// `--fallback` makes a session agent preferable while retaining this agent for terminal-only
-    /// sessions. Callers may retain a startup error while trying broker authorization: a desktop
+    /// The broker authorizes this same parent process so sequential sud0 children share polkit's
+    /// native process-family retention scope. `--fallback` makes a session agent preferable while
+    /// retaining this agent for terminal-only sessions. Callers may retain a startup error while
+    /// trying broker authorization: a desktop
     /// agent can still satisfy it, but the startup error gives a clear cause if authorization fails.
     pub async fn start() -> Result<Self, AuthenticationAgentError> {
         let terminal = std::fs::File::options()
@@ -61,9 +62,14 @@ impl AuthenticationAgent {
             pipe2(OFlag::O_CLOEXEC).map_err(AuthenticationAgentError::Pipe)?;
         let notify_fd = write_end.as_raw_fd();
         let read_end = AsyncFd::new(read_end).map_err(AuthenticationAgentError::Monitor)?;
+        let parent_pid = nix::unistd::getppid();
+        if parent_pid.as_raw() <= 1 {
+            return Err(AuthenticationAgentError::NoControllingTerminal);
+        }
         let mut command = Command::new(PKTTYAGENT_PATH);
         command
             .arg("--fallback")
+            .arg(format!("--process={}", parent_pid.as_raw()))
             .arg(format!("--notify-fd={notify_fd}"))
             .stdin(Stdio::from(terminal))
             .stdout(Stdio::from(terminal_out))
