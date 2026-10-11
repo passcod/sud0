@@ -250,7 +250,10 @@ fn prepare_terminal(mode: IoMode) -> Result<(), ExecutorError> {
     let before = terminal_snapshot()?;
     validate_terminal_shape(&before)?;
     if terminal_is_ready(&before) {
-        return Ok(());
+        if before.session == before.pid {
+            return Ok(());
+        }
+        return Err(ExecutorError::InvalidControllingTerminal);
     }
 
     if before.session != before.pid {
@@ -286,8 +289,8 @@ struct TerminalSnapshot {
 #[derive(Debug, Clone, Copy)]
 struct TerminalState {
     device: libc::dev_t,
-    terminal_session: libc::pid_t,
-    foreground_group: libc::pid_t,
+    terminal_session: Option<libc::pid_t>,
+    foreground_group: Option<libc::pid_t>,
 }
 
 fn terminal_snapshot() -> Result<TerminalSnapshot, ExecutorError> {
@@ -330,26 +333,45 @@ fn terminal_state(fd: RawFd) -> Result<TerminalState, ExecutorError> {
 
     // SAFETY: `tcgetsid` and `tcgetpgrp` consume only an integer descriptor and return errors for
     // descriptors without the required terminal relationship; they access no Rust memory.
-    let terminal_session = unsafe { libc::tcgetsid(fd) };
-    if terminal_session == -1 {
-        return Err(ExecutorError::ReadTerminalSession {
-            fd,
-            source: io::Error::last_os_error(),
-        });
-    }
-    // SAFETY: As above, this call consumes only the validated integer terminal descriptor.
-    let foreground_group = unsafe { libc::tcgetpgrp(fd) };
-    if foreground_group == -1 {
-        return Err(ExecutorError::ReadForegroundGroup {
-            fd,
-            source: io::Error::last_os_error(),
-        });
-    }
+    let terminal_session = terminal_relationship(fd, TerminalQuery::Session)?;
+    // SAFETY: As above, this query consumes only the validated integer terminal descriptor.
+    let foreground_group = terminal_relationship(fd, TerminalQuery::ForegroundGroup)?;
 
     Ok(TerminalState {
         device: stat.st_rdev,
         terminal_session,
         foreground_group,
+    })
+}
+
+#[derive(Clone, Copy)]
+enum TerminalQuery {
+    Session,
+    ForegroundGroup,
+}
+
+fn terminal_relationship(
+    fd: RawFd,
+    query: TerminalQuery,
+) -> Result<Option<libc::pid_t>, ExecutorError> {
+    // SAFETY: Both operations consume only an integer descriptor and access no Rust memory.
+    let value = unsafe {
+        match query {
+            TerminalQuery::Session => libc::tcgetsid(fd),
+            TerminalQuery::ForegroundGroup => libc::tcgetpgrp(fd),
+        }
+    };
+    if value != -1 {
+        return Ok(Some(value));
+    }
+
+    let source = io::Error::last_os_error();
+    if source.raw_os_error() == Some(libc::ENOTTY) {
+        return Ok(None);
+    }
+    Err(match query {
+        TerminalQuery::Session => ExecutorError::ReadTerminalSession { fd, source },
+        TerminalQuery::ForegroundGroup => ExecutorError::ReadForegroundGroup { fd, source },
     })
 }
 
@@ -367,8 +389,8 @@ fn validate_terminal_shape(snapshot: &TerminalSnapshot) -> Result<(), ExecutorEr
 
 fn terminal_is_ready(snapshot: &TerminalSnapshot) -> bool {
     snapshot.terminals.iter().all(|terminal| {
-        terminal.terminal_session == snapshot.session
-            && terminal.foreground_group == snapshot.process_group
+        terminal.terminal_session == Some(snapshot.session)
+            && terminal.foreground_group == Some(snapshot.process_group)
     })
 }
 
@@ -604,15 +626,15 @@ mod tests {
             session: 100,
             terminals: [TerminalState {
                 device: 7,
-                terminal_session: 100,
-                foreground_group: 100,
+                terminal_session: Some(100),
+                foreground_group: Some(100),
             }; 3],
         };
         assert!(terminal_is_ready(&ready));
 
         let wrong_session = TerminalSnapshot {
             terminals: [TerminalState {
-                terminal_session: 99,
+                terminal_session: Some(99),
                 ..ready.terminals[0]
             }; 3],
             ..ready
@@ -629,18 +651,18 @@ mod tests {
             terminals: [
                 TerminalState {
                     device: 7,
-                    terminal_session: 100,
-                    foreground_group: 100,
+                    terminal_session: Some(100),
+                    foreground_group: Some(100),
                 },
                 TerminalState {
                     device: 8,
-                    terminal_session: 100,
-                    foreground_group: 100,
+                    terminal_session: Some(100),
+                    foreground_group: Some(100),
                 },
                 TerminalState {
                     device: 7,
-                    terminal_session: 100,
-                    foreground_group: 100,
+                    terminal_session: Some(100),
+                    foreground_group: Some(100),
                 },
             ],
         };
