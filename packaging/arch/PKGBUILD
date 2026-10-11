@@ -10,6 +10,7 @@ depends=('bash' 'gcc-libs' 'glibc' 'polkit' 'systemd>=257')
 makedepends=('git' 'libxml2' 'rust>=1.89')
 provides=('sud0')
 conflicts=('sud0')
+backup=('etc/sud0/prompt.template')
 source=('sud0::git+https://github.com/passcod/sud0.git')
 b2sums=('SKIP')
 
