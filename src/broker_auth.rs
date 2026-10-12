@@ -313,7 +313,6 @@ mod tests {
         );
     }
 
-    #[derive(Debug)]
     struct FakeAuthority {
         result: bool,
         release: Arc<Notify>,
