@@ -62,11 +62,7 @@ trait SystemdService {
 pub enum CommandOutcome {
     Exited(i32),
     Signaled(i32),
-    ServiceFailure {
-        result: String,
-        code: i32,
-        status: i32,
-    },
+    ServiceFailure,
 }
 
 /// Resources retained through authorization and consumed exactly once for launch.
@@ -439,11 +435,7 @@ pub fn map_service_outcome(result: &str, code: i32, status: i32) -> CommandOutco
         ("success" | "signal", libc::CLD_KILLED) | ("success" | "core-dump", libc::CLD_DUMPED) => {
             CommandOutcome::Signaled(status)
         }
-        _ => CommandOutcome::ServiceFailure {
-            result: result.to_owned(),
-            code,
-            status,
-        },
+        _ => CommandOutcome::ServiceFailure,
     }
 }
 
@@ -568,11 +560,7 @@ mod tests {
         );
         assert_eq!(
             map_service_outcome("protocol", 0, 0),
-            CommandOutcome::ServiceFailure {
-                result: "protocol".to_owned(),
-                code: 0,
-                status: 0
-            }
+            CommandOutcome::ServiceFailure
         );
     }
 

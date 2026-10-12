@@ -87,7 +87,7 @@ impl InvocationStatusWire {
                 signal,
                 error_category: String::new(),
             },
-            CommandOutcome::ServiceFailure { .. } => Self {
+            CommandOutcome::ServiceFailure => Self {
                 phase: PHASE_FAILED,
                 outcome: OUTCOME_SERVICE_FAILURE,
                 status: 0,
@@ -838,11 +838,7 @@ mod tests {
 
     #[test]
     fn status_mapping_never_contains_request_metadata() {
-        let status = InvocationStatusWire::from_outcome(CommandOutcome::ServiceFailure {
-            result: "exit-code".to_owned(),
-            code: libc::CLD_EXITED,
-            status: 22,
-        });
+        let status = InvocationStatusWire::from_outcome(CommandOutcome::ServiceFailure);
         assert_eq!(status.error_category, "service-failure");
         assert!(status.is_terminal());
     }
