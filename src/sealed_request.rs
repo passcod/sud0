@@ -31,7 +31,7 @@ pub struct SealedRequestFd {
 impl SealedRequestFd {
     /// Encodes `request` into a new close-on-exec sealable memfd and seals it permanently.
     pub fn create(request: &FrozenRequest) -> Result<Self, SealedRequestError> {
-        let encoded = request.encode()?;
+        let encoded = request.encode();
         let fd = memfd_create(
             MEMFD_NAME,
             MFdFlags::MFD_CLOEXEC | MFdFlags::MFD_ALLOW_SEALING,
@@ -101,8 +101,6 @@ fn get_seals(file: &File) -> Result<SealFlag, SealedRequestError> {
 /// Failure to create or consume an immutable request descriptor.
 #[derive(Debug, Error)]
 pub enum SealedRequestError {
-    #[error("failed to encode frozen request: {0}")]
-    Encode(#[from] ProtocolError),
     #[error("failed to create request descriptor: {0}")]
     Create(nix::errno::Errno),
     #[error("failed to write request descriptor: {0}")]
@@ -172,7 +170,7 @@ mod tests {
 
     #[test]
     fn rejects_missing_mandatory_seals() {
-        let file = unsealed_file(&request().encode().unwrap());
+        let file = unsealed_file(&request().encode());
         assert!(matches!(
             decode_sealed_request(&file),
             Err(SealedRequestError::MissingSeals { .. })
@@ -191,7 +189,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_descriptor_shape_before_reading() {
-        let file = unsealed_file(&request().encode().unwrap());
+        let file = unsealed_file(&request().encode());
         let path = format!("/proc/self/fd/{}", file.as_fd().as_raw_fd());
         let write_only = std::fs::OpenOptions::new().write(true).open(path).unwrap();
         assert!(matches!(

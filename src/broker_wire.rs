@@ -232,7 +232,7 @@ mod tests {
 
     fn wire(mode: IoMode, stdio: StdioWire, size: Option<WindowSize>) -> RunWire {
         RunWire {
-            request: request(mode).encode().unwrap(),
+            request: request(mode).encode(),
             description: Optional::from(Some("maintenance".to_owned())),
             cwd: directory_fd().into(),
             stdio,
@@ -327,7 +327,7 @@ mod tests {
         let cwd: OwnedFd = tempfile::tempfile().unwrap().into();
         let request = request(IoMode::Pipe);
         let result = PreparedRequest::from_wire(RunWire {
-            request: request.encode().unwrap(),
+            request: request.encode(),
             description: Optional::from(None),
             cwd: cwd.into(),
             stdio: StdioWire::pipe(null_fd(), null_fd(), null_fd()),

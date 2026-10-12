@@ -30,8 +30,6 @@ pub enum ClientError {
     AuthenticationAgent(#[from] AuthenticationAgentError),
     #[error("failed to duplicate standard descriptor: {0}")]
     DuplicateStdio(rustix::io::Errno),
-    #[error("failed to encode execution request: {0}")]
-    Encode(#[from] crate::ProtocolError),
     #[error("broker returned an invalid invocation status")]
     InvalidStatus,
     #[error("authorization was denied")]
@@ -77,7 +75,7 @@ impl BrokerClient {
                 duplicate_cloexec(std::io::stderr().as_fd())?,
             ),
         };
-        let request = prepared.request.encode()?;
+        let request = prepared.request.encode();
         let wire = RunWire {
             request,
             description: Optional::from(

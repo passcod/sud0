@@ -14,21 +14,14 @@ struct WireRequest {
 
 impl FrozenRequest {
     /// Encodes this request in the private Postcard wire format.
-    pub fn encode(&self) -> Result<Vec<u8>, ProtocolError> {
+    pub fn encode(&self) -> Vec<u8> {
         let wire = WireRequest {
             version: PROTOCOL_VERSION,
             argv: self.argv().to_vec(),
             environment: self.environment().to_vec(),
             io_mode: self.io_mode(),
         };
-        let encoded = postcard::to_allocvec(&wire).map_err(ProtocolError::Encode)?;
-        if encoded.len() > MAX_ENCODED_REQUEST_BYTES {
-            return Err(ProtocolError::EncodedRequestTooLarge {
-                actual: encoded.len(),
-                maximum: MAX_ENCODED_REQUEST_BYTES,
-            });
-        }
-        Ok(encoded)
+        postcard::to_allocvec(&wire).expect("validated request always fits the allocation flavor")
     }
 
     /// Decodes bounded Postcard data and reconstructs validated request state.
@@ -67,10 +60,7 @@ mod tests {
     #[test]
     fn round_trip_preserves_validated_request() {
         let request = request();
-        assert_eq!(
-            FrozenRequest::decode(&request.encode().unwrap()).unwrap(),
-            request
-        );
+        assert_eq!(FrozenRequest::decode(&request.encode()).unwrap(), request);
     }
 
     #[test]
@@ -79,7 +69,7 @@ mod tests {
             FrozenRequest::decode(&[0xff]),
             Err(ProtocolError::Decode(_))
         ));
-        let encoded = request().encode().unwrap();
+        let encoded = request().encode();
         assert!(matches!(
             FrozenRequest::decode(&encoded[..encoded.len() - 1]),
             Err(ProtocolError::Decode(_))
@@ -89,7 +79,7 @@ mod tests {
             Err(ProtocolError::EncodedRequestTooLarge { .. })
         ));
 
-        let mut trailing = request().encode().unwrap();
+        let mut trailing = request().encode();
         trailing.push(0);
         assert!(matches!(
             FrozenRequest::decode(&trailing),

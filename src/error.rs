@@ -52,8 +52,6 @@ pub enum RequestError {
 pub enum ProtocolError {
     #[error("encoded request has {actual} bytes; the maximum is {maximum}")]
     EncodedRequestTooLarge { actual: usize, maximum: usize },
-    #[error("failed to encode request: {0}")]
-    Encode(postcard::Error),
     #[error("failed to decode request: {0}")]
     Decode(postcard::Error),
     #[error("request has trailing data")]
