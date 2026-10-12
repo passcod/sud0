@@ -26,8 +26,7 @@ impl WorkingDirectoryFd {
 
     /// Returns the kernel's current UTF-8 pathname for this exact opened directory object.
     pub fn display_path(&self) -> Result<String, WorkingDirectoryError> {
-        let link = format!("/proc/self/fd/{}", self.fd.as_raw_fd());
-        std::fs::read_link(link)
+        std::fs::read_link(format!("/proc/self/fd/{}", self.fd.as_raw_fd()))
             .map_err(WorkingDirectoryError::DisplayPath)?
             .into_os_string()
             .into_string()

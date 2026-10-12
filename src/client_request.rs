@@ -1,5 +1,5 @@
 use std::env;
-use std::os::fd::{AsFd, BorrowedFd};
+use std::io::IsTerminal;
 
 use thiserror::Error;
 
@@ -28,7 +28,7 @@ pub enum ClientRequestError {
 
 impl PreparedClientRequest {
     pub fn from_cli(cli: Cli, io_mode: IoMode) -> Result<Self, ClientRequestError> {
-        let cwd = prepare_working_directory(cli.chdir.as_deref())?;
+        let cwd = WorkingDirectoryFd::open(cli.chdir.as_deref().unwrap_or("."))?;
         let environment = parse_environment(&cli.setenv)?;
         let request = FrozenRequest::new(cli.command, environment, io_mode)?;
         let description = cli.description.map(HumanDescription::new).transpose()?;
@@ -55,14 +55,10 @@ pub fn choose_io_mode(explicit_pty: bool, explicit_pipe: bool, tty: [bool; 3]) -
 
 pub fn stdio_are_ttys() -> [bool; 3] {
     [
-        is_tty(std::io::stdin().as_fd()),
-        is_tty(std::io::stdout().as_fd()),
-        is_tty(std::io::stderr().as_fd()),
+        std::io::stdin().is_terminal(),
+        std::io::stdout().is_terminal(),
+        std::io::stderr().is_terminal(),
     ]
-}
-
-fn is_tty(fd: BorrowedFd<'_>) -> bool {
-    nix::unistd::isatty(fd).unwrap_or(false)
 }
 
 fn parse_environment(values: &[String]) -> Result<Vec<(String, String)>, ClientRequestError> {
@@ -81,12 +77,6 @@ fn parse_environment(values: &[String]) -> Result<Vec<(String, String)>, ClientR
             },
         })
         .collect()
-}
-
-fn prepare_working_directory(
-    requested: Option<&str>,
-) -> Result<WorkingDirectoryFd, ClientRequestError> {
-    WorkingDirectoryFd::open(requested.unwrap_or(".")).map_err(Into::into)
 }
 
 #[cfg(test)]

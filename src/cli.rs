@@ -2,10 +2,10 @@ use clap::Parser;
 
 /// Run a command as root.
 #[derive(Parser)]
-#[command(name = "sud0", version, about, trailing_var_arg = true)]
+#[command(version, about, trailing_var_arg = true)]
 pub struct Cli {
     /// Human-readable reason shown in the authentication prompt
-    #[arg(short = 'd', long, value_name = "TEXT")]
+    #[arg(short, long, value_name = "TEXT")]
     pub description: Option<String>,
 
     /// Run the command in this working directory
@@ -21,7 +21,7 @@ pub struct Cli {
     pub pty: bool,
 
     /// Pass stdin, stdout, and stderr directly
-    #[arg(long, conflicts_with = "pty")]
+    #[arg(long)]
     pub pipe: bool,
 
     /// Do not permit an interactive authentication challenge

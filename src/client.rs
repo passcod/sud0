@@ -27,7 +27,7 @@ pub enum ClientError {
     #[error("failed to communicate with the privilege broker: {0}")]
     Broker(zbus::Error),
     #[error(transparent)]
-    AuthenticationAgent(#[from] AuthenticationAgentError),
+    AuthenticationAgent(AuthenticationAgentError),
     #[error("failed to duplicate standard descriptor: {0}")]
     DuplicateStdio(rustix::io::Errno),
     #[error("broker returned an invalid invocation status")]
