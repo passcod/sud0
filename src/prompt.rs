@@ -76,11 +76,12 @@ impl HumanDescription {
     }
 }
 
-/// Formats argv as shell-compatible ANSI-C quoted byte strings.
+/// Formats argv as shell-compatible words.
 ///
-/// Every unsafe or non-ASCII byte is represented by a fixed-width octal escape. If the complete
-/// rendering exceeds its bound, the prefix ends at a byte-escape or argument boundary, closes any
-/// open quote, and carries the complete execution digest.
+/// Plain words remain unquoted, printable values use single quotes when needed, and unsafe or
+/// non-ASCII bytes use ANSI-C quoting with fixed-width octal escapes. If the complete rendering
+/// exceeds its bound, the prefix ends at a byte-escape or argument boundary, closes any open quote,
+/// and carries the complete execution digest.
 pub fn format_command(request: &FrozenRequest) -> String {
     format_command_with_state(request).0
 }
@@ -360,18 +361,50 @@ fn bounded_byte_display(value: &[u8], maximum: usize, request: &FrozenRequest) -
 }
 
 fn escaped_argument_length(argument: &[u8]) -> usize {
-    3 + argument
+    if !argument.is_empty() && argument.iter().all(|byte| is_unquoted_shell_byte(*byte)) {
+        argument.len()
+    } else if argument
         .iter()
-        .map(|byte| escaped_byte_length(*byte))
-        .sum::<usize>()
+        .all(|byte| is_single_quoted_shell_byte(*byte))
+    {
+        argument.len() + 2
+    } else {
+        3 + argument
+            .iter()
+            .map(|byte| escaped_byte_length(*byte))
+            .sum::<usize>()
+    }
 }
 
 fn push_escaped_argument(output: &mut String, argument: &[u8]) {
-    output.push_str("$'");
-    for &byte in argument {
-        push_escaped_byte(output, byte);
+    if !argument.is_empty() && argument.iter().all(|byte| is_unquoted_shell_byte(*byte)) {
+        output.extend(argument.iter().map(|byte| char::from(*byte)));
+    } else if argument
+        .iter()
+        .all(|byte| is_single_quoted_shell_byte(*byte))
+    {
+        output.push('\'');
+        output.extend(argument.iter().map(|byte| char::from(*byte)));
+        output.push('\'');
+    } else {
+        output.push_str("$'");
+        for &byte in argument {
+            push_escaped_byte(output, byte);
+        }
+        output.push('\'');
     }
-    output.push('\'');
+}
+
+const fn is_unquoted_shell_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric()
+        || matches!(
+            byte,
+            b'_' | b'@' | b'%' | b'+' | b'=' | b':' | b',' | b'.' | b'/' | b'-'
+        )
+}
+
+const fn is_single_quoted_shell_byte(byte: u8) -> bool {
+    matches!(byte, 0x20..=0x7e) && !matches!(byte, b'\'' | b'<' | b'>' | b'&')
 }
 
 const fn escaped_byte_length(byte: u8) -> usize {
@@ -466,7 +499,7 @@ mod tests {
         ]);
         assert_eq!(
             format_command(&request),
-            "$'echo' $'two words' $'quote\\047\\134' $'line\\012\\377'"
+            "echo 'two words' $'quote\\047\\134' $'line\\012\\377'"
         );
     }
 
@@ -487,7 +520,7 @@ mod tests {
     #[test]
     fn empty_argument_remains_visible() {
         let request = request(vec![b"printf".to_vec(), Vec::new()]);
-        assert_eq!(format_command(&request), "$'printf' $''");
+        assert_eq!(format_command(&request), "printf ''");
     }
 
     #[test]
@@ -527,7 +560,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             prompt,
-            "Authentication is required to run as root:\ninspect account\n$'id'\nin $'/actual'\nwith 1 environment override(s)"
+            "Authentication is required to run as root:\ninspect account\nid\nin /actual\nwith 1 environment override(s)"
         );
         assert!(!prompt.contains("/claimed"));
         assert!(!prompt.contains("mount="));
@@ -551,7 +584,7 @@ mod tests {
         )
         .unwrap();
         assert!(
-            prompt.contains("$'id'|$'/actual'|mount=7, inode=11|$'LANG'=$'C'|"),
+            prompt.contains("id|/actual|mount=7, inode=11|LANG=C|"),
             "{prompt:?}"
         );
         assert!(prompt.ends_with(&request.execution_digest_hex()));
@@ -607,7 +640,7 @@ mod tests {
 
     #[test]
     fn command_truncates_at_escape_boundary_and_includes_execution_digest() {
-        let request = request(vec![b"x".repeat(MAX_COMMAND_DISPLAY_BYTES)]);
+        let request = request(vec![b"x".repeat(MAX_COMMAND_DISPLAY_BYTES + 1)]);
         let display = format_command(&request);
         assert_eq!(display.len(), MAX_COMMAND_DISPLAY_BYTES);
         assert!(display.ends_with(&format!(
