@@ -36,14 +36,12 @@ struct Signals {
     quit: Signal,
     interrupt: Signal,
     tstp: Signal,
-    cont: Signal,
 }
 
 enum SignalEvent {
     WindowChange,
     Terminate(i32),
     Suspend,
-    Continue,
 }
 
 #[tokio::main]
@@ -166,13 +164,7 @@ async fn finish_pty(invocation: &Invocation, terminal_fd: OwnedFd) -> Result<u8,
                     }
                 }
                 SignalEvent::Suspend => {
-                    suspend_process(Some(&mut terminal))?;
-                    if let Ok(size) = window_size(terminal_fd.as_fd()) {
-                        invocation.set_window_size(size).await?;
-                    }
-                }
-                SignalEvent::Continue => {
-                    terminal.reenter()?;
+                    suspend_process(&mut terminal)?;
                     if let Ok(size) = window_size(terminal_fd.as_fd()) {
                         invocation.set_window_size(size).await?;
                     }
@@ -212,7 +204,6 @@ impl Signals {
             quit: signal_named(SignalKind::quit(), "SIGQUIT")?,
             interrupt: signal_named(SignalKind::interrupt(), "SIGINT")?,
             tstp: signal_named(SignalKind::from_raw(libc::SIGTSTP), "SIGTSTP")?,
-            cont: signal_named(SignalKind::from_raw(libc::SIGCONT), "SIGCONT")?,
         })
     }
 
@@ -233,7 +224,6 @@ impl Signals {
             _ = self.quit.recv() => SignalEvent::Terminate(libc::SIGQUIT),
             _ = self.interrupt.recv() => SignalEvent::Terminate(libc::SIGINT),
             _ = self.tstp.recv() => SignalEvent::Suspend,
-            _ = self.cont.recv() => SignalEvent::Continue,
         }
     }
 }

@@ -420,10 +420,9 @@ mod tests {
         let caller = caller();
         let future = authorize(&authority, &caller, &request, cancellation.subscribe());
         tokio::pin!(future);
-        let state = std::future::poll_fn(|context| {
-            std::task::Poll::Ready(future.as_mut().poll(context))
-        })
-        .await;
+        let state =
+            std::future::poll_fn(|context| std::task::Poll::Ready(future.as_mut().poll(context)))
+                .await;
         assert!(state.is_pending());
         cancellation.cancel(CancellationReason::Caller);
 
@@ -453,10 +452,9 @@ mod tests {
         let caller = caller();
         let future = authorize(&authority, &caller, &request, cancellation.subscribe());
         tokio::pin!(future);
-        let state = std::future::poll_fn(|context| {
-            std::task::Poll::Ready(future.as_mut().poll(context))
-        })
-        .await;
+        let state =
+            std::future::poll_fn(|context| std::task::Poll::Ready(future.as_mut().poll(context)))
+                .await;
         assert!(state.is_pending());
         release.notify_one();
         cancellation.cancel(CancellationReason::OwnerLost);

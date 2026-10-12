@@ -203,15 +203,10 @@ pub fn window_size(fd: BorrowedFd<'_>) -> Result<WindowSize, TerminalError> {
     Ok(size)
 }
 
-pub fn suspend_process(guard: Option<&mut TerminalGuard>) -> Result<(), TerminalError> {
-    if let Some(guard) = guard {
-        guard.restore()?;
-        let _ = kill(Pid::this(), Signal::SIGSTOP);
-        guard.reenter()
-    } else {
-        let _ = kill(Pid::this(), Signal::SIGSTOP);
-        Ok(())
-    }
+pub fn suspend_process(guard: &mut TerminalGuard) -> Result<(), TerminalError> {
+    guard.restore()?;
+    let _ = kill(Pid::this(), Signal::SIGSTOP);
+    guard.reenter()
 }
 
 fn reopen_descriptor(
