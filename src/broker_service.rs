@@ -515,7 +515,6 @@ async fn run_pipeline(pipeline: RunPipeline) {
         }
     };
     let authorization = match AuthorizationRequest::for_run(
-        &caller,
         &prompt_template,
         prepared.request(),
         prepared.description(),
@@ -532,7 +531,14 @@ async fn run_pipeline(pipeline: RunPipeline) {
         }
     };
     let authority = ZbusAuthority::new(connection.clone());
-    let outcome = match authorize(&authority, &authorization, cancellation.subscribe()).await {
+    let outcome = match authorize(
+        &authority,
+        &caller,
+        &authorization,
+        cancellation.subscribe(),
+    )
+    .await
+    {
         Ok(outcome) => outcome,
         Err(_) => {
             shared.update(InvocationStatusWire::terminal_phase(

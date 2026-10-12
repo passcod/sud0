@@ -77,10 +77,6 @@ impl CallerIdentity {
 /// Fully broker-derived authorization request.
 #[derive(Debug)]
 pub struct AuthorizationRequest {
-    subject_pid: u32,
-    subject_uid: u32,
-    subject_pidfd: OwnedFd,
-    action_id: &'static str,
     message: String,
     flags: u32,
     cancellation_id: String,
@@ -88,7 +84,6 @@ pub struct AuthorizationRequest {
 
 impl AuthorizationRequest {
     pub fn for_run(
-        caller: &CallerIdentity,
         template: &PromptTemplate,
         request: &FrozenRequest,
         description: Option<&HumanDescription>,
@@ -96,30 +91,10 @@ impl AuthorizationRequest {
         allow_interaction: bool,
     ) -> Result<Self, AuthorizationError> {
         Ok(Self {
-            subject_pid: caller.authorization_process_id,
-            subject_uid: caller.unix_uid,
-            subject_pidfd: caller
-                .authorization_process_fd
-                .as_fd()
-                .try_clone_to_owned()
-                .map_err(AuthorizationError::DuplicatePidfd)?,
-            action_id: POLKIT_RUN_ACTION,
             message: template.render(request, description, cwd_path)?,
             flags: u32::from(allow_interaction) * POLKIT_ALLOW_USER_INTERACTION,
             cancellation_id: random_identifier("sud0-auth")?,
         })
-    }
-
-    pub const fn subject_pid(&self) -> u32 {
-        self.subject_pid
-    }
-
-    pub const fn subject_uid(&self) -> u32 {
-        self.subject_uid
-    }
-
-    pub fn action_id(&self) -> &'static str {
-        self.action_id
     }
 
     pub fn message(&self) -> &str {
@@ -197,6 +172,7 @@ pub enum AuthorizationOutcome {
 pub(crate) trait Authority {
     fn check(
         &self,
+        caller: &CallerIdentity,
         request: &AuthorizationRequest,
     ) -> impl Future<Output = Result<PolicyKitResult, AuthorizationError>> + Send;
 
@@ -215,6 +191,7 @@ pub(crate) struct PolicyKitResult {
 /// Authorizes one request and gives explicit cancellation precedence over a racing completion.
 pub(crate) async fn authorize<A: Authority>(
     authority: &A,
+    caller: &CallerIdentity,
     request: &AuthorizationRequest,
     mut cancellation: watch::Receiver<Option<CancellationReason>>,
 ) -> Result<AuthorizationOutcome, AuthorizationError> {
@@ -222,7 +199,7 @@ pub(crate) async fn authorize<A: Authority>(
         return Ok(AuthorizationOutcome::Cancelled(reason));
     }
 
-    let check = authority.check(request);
+    let check = authority.check(caller, request);
     tokio::pin!(check);
 
     tokio::select! {
@@ -269,22 +246,26 @@ impl ZbusAuthority {
 impl Authority for ZbusAuthority {
     async fn check(
         &self,
+        caller: &CallerIdentity,
         request: &AuthorizationRequest,
     ) -> Result<PolicyKitResult, AuthorizationError> {
         let proxy = PolicyKitAuthorityProxy::new(&self.connection)
             .await
             .map_err(AuthorizationError::PolicyKit)?;
         let mut subject_details = HashMap::new();
-        subject_details.insert("pid", Value::new(request.subject_pid()));
+        subject_details.insert("pid", Value::new(caller.authorization_process_id()));
         subject_details.insert("start-time", Value::new(0_u64));
-        subject_details.insert("uid", Value::new(request.subject_uid() as i32));
-        subject_details.insert("pidfd", Value::new(Fd::from(request.subject_pidfd.as_fd())));
+        subject_details.insert("uid", Value::new(caller.unix_uid() as i32));
+        subject_details.insert(
+            "pidfd",
+            Value::new(Fd::from(caller.authorization_process_fd().as_fd())),
+        );
         let mut details = HashMap::new();
         details.insert("polkit.message", request.message());
         let (authorized, _challenge, result_details) = proxy
             .check_authorization(
                 ("unix-process", subject_details),
-                request.action_id(),
+                POLKIT_RUN_ACTION,
                 details,
                 request.flags(),
                 request.cancellation_id(),
@@ -314,8 +295,6 @@ impl Authority for ZbusAuthority {
 pub enum AuthorizationError {
     #[error("failed to render trusted authentication prompt: {0}")]
     Prompt(#[from] PromptTemplateError),
-    #[error("failed to duplicate authenticated caller pidfd: {0}")]
-    DuplicatePidfd(std::io::Error),
     #[error("failed to obtain a random authorization identifier: {0}")]
     Random(getrandom::Error),
     #[error("PolicyKit authorization failed")]
@@ -354,7 +333,6 @@ mod tests {
 
     fn authorization(allow_interaction: bool) -> AuthorizationRequest {
         AuthorizationRequest::for_run(
-            &caller(),
             &PromptTemplate::parse("{command}".to_owned()).unwrap(),
             &request(),
             None,
@@ -370,7 +348,6 @@ mod tests {
         let template =
             PromptTemplate::parse("{description_line}|{command}|{cwd}".to_owned()).unwrap();
         let check = AuthorizationRequest::for_run(
-            &caller(),
             &template,
             &request(),
             Some(&description),
@@ -379,9 +356,6 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(check.subject_pid(), std::process::id());
-        assert_eq!(check.subject_uid(), nix::unistd::Uid::effective().as_raw());
-        assert_eq!(check.action_id(), "nz.passcod.sud0.run");
         assert_eq!(check.flags(), 1);
         assert_eq!(
             check.message(),
@@ -409,6 +383,7 @@ mod tests {
     impl Authority for FakeAuthority {
         async fn check(
             &self,
+            _caller: &CallerIdentity,
             request: &AuthorizationRequest,
         ) -> Result<PolicyKitResult, AuthorizationError> {
             self.calls
@@ -442,7 +417,8 @@ mod tests {
         };
         let request = authorization(true);
         let cancellation = Cancellation::new();
-        let future = authorize(&authority, &request, cancellation.subscribe());
+        let caller = caller();
+        let future = authorize(&authority, &caller, &request, cancellation.subscribe());
         tokio::pin!(future);
         assert!(futures_util::poll!(&mut future).is_pending());
         cancellation.cancel(CancellationReason::Caller);
@@ -470,7 +446,8 @@ mod tests {
         };
         let request = authorization(true);
         let cancellation = Cancellation::new();
-        let future = authorize(&authority, &request, cancellation.subscribe());
+        let caller = caller();
+        let future = authorize(&authority, &caller, &request, cancellation.subscribe());
         tokio::pin!(future);
         assert!(futures_util::poll!(&mut future).is_pending());
         release.notify_one();
@@ -517,7 +494,7 @@ mod tests {
             let request = authorization(false);
             let cancellation = Cancellation::new();
             assert_eq!(
-                authorize(&authority, &request, cancellation.subscribe())
+                authorize(&authority, &caller(), &request, cancellation.subscribe())
                     .await
                     .unwrap(),
                 expected
