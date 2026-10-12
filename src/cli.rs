@@ -2,7 +2,7 @@ use std::ffi::OsString;
 
 use clap::{ArgAction, Parser};
 
-/// Run a command as root through the sud0 privilege broker.
+/// Run a command as root.
 #[derive(Debug, Parser)]
 #[command(name = "sud0", version, about, trailing_var_arg = true)]
 pub struct Cli {
