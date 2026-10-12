@@ -18,11 +18,7 @@ impl FrozenRequest {
         let wire = WireRequest {
             version: PROTOCOL_VERSION,
             argv: self.argv().to_vec(),
-            environment: self
-                .environment()
-                .iter()
-                .map(|variable| (variable.name().to_owned(), variable.value().to_owned()))
-                .collect(),
+            environment: self.environment().to_vec(),
             io_mode: self.io_mode(),
         };
         let encoded = postcard::to_allocvec(&wire).map_err(ProtocolError::Encode)?;

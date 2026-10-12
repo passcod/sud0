@@ -169,7 +169,7 @@ pub fn build_environment(request: &FrozenRequest) -> Vec<CString> {
             request
                 .environment()
                 .iter()
-                .map(|variable| environment_assignment(variable.name(), variable.value())),
+                .map(|(name, value)| environment_assignment(name, value)),
         )
         .collect()
 }

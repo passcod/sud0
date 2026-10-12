@@ -16,30 +16,13 @@ pub enum IoMode {
     Pipe,
 }
 
-/// One explicit environment assignment.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EnvironmentVariable {
-    name: String,
-    value: String,
-}
-
-impl EnvironmentVariable {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn value(&self) -> &str {
-        &self.value
-    }
-}
-
 /// An immutable, validated execution request.
 ///
 /// Presentation-only data and the descriptor-backed working directory are deliberately absent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrozenRequest {
     argv: Vec<String>,
-    environment: Vec<EnvironmentVariable>,
+    environment: Vec<(String, String)>,
     io_mode: IoMode,
 }
 
@@ -63,7 +46,7 @@ impl FrozenRequest {
         &self.argv
     }
 
-    pub fn environment(&self) -> &[EnvironmentVariable] {
+    pub fn environment(&self) -> &[(String, String)] {
         &self.environment
     }
 
@@ -101,7 +84,7 @@ fn validate_argv(argv: &[String]) -> Result<(), RequestError> {
 
 fn validate_environment(
     environment: Vec<(String, String)>,
-) -> Result<Vec<EnvironmentVariable>, RequestError> {
+) -> Result<Vec<(String, String)>, RequestError> {
     if environment.len() > MAX_ENVIRONMENT_VARIABLES {
         return Err(RequestError::TooManyEnvironmentVariables {
             actual: environment.len(),
@@ -127,9 +110,8 @@ fn validate_environment(
             });
         }
         reject_nul(&value, "environment variable value")?;
-        validated.push(EnvironmentVariable { name, value });
+        validated.push((name, value));
     }
-    validated.sort_unstable_by(|left, right| left.name.cmp(&right.name));
     Ok(validated)
 }
 
@@ -190,12 +172,12 @@ fn is_protected_environment_name(name: &str) -> bool {
 
 fn validate_total_size(
     argv: &[String],
-    environment: &[EnvironmentVariable],
+    environment: &[(String, String)],
 ) -> Result<(), RequestError> {
     let total = argv.iter().map(String::len).sum::<usize>()
         + environment
             .iter()
-            .map(|variable| variable.name.len() + variable.value.len())
+            .map(|(name, value)| name.len() + value.len())
             .sum::<usize>();
     if total > MAX_REQUEST_DATA_BYTES {
         return Err(RequestError::RequestTooLarge {
@@ -334,18 +316,5 @@ mod tests {
             FrozenRequest::new(argv, vec![], IoMode::Pipe),
             Err(RequestError::RequestTooLarge { .. })
         ));
-    }
-
-    #[test]
-    fn canonicalizes_environment_order() {
-        let request = request(vec!["true"], vec![("Z_VAR", "last"), ("A_VAR", "first")]).unwrap();
-        assert_eq!(
-            request
-                .environment()
-                .iter()
-                .map(EnvironmentVariable::name)
-                .collect::<Vec<_>>(),
-            ["A_VAR", "Z_VAR"]
-        );
     }
 }

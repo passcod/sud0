@@ -33,5 +33,5 @@ pub use broker_wire::{PrepareError, PreparedIo, PreparedRequest, RunWire, StdioW
 pub use cwd::{WorkingDirectoryError, WorkingDirectoryFd};
 pub use error::{DescriptionError, ProtocolError, RequestError};
 pub use prompt::{HumanDescription, PromptTemplate, PromptTemplateError, format_command};
-pub use request::{EnvironmentVariable, FrozenRequest, IoMode};
+pub use request::{FrozenRequest, IoMode};
 pub use sealed_request::{SealedRequestError, SealedRequestFd, decode_sealed_request};
