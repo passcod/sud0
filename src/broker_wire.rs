@@ -73,7 +73,6 @@ pub struct RunWire {
 }
 
 /// Broker-owned input frozen before authorization begins.
-#[derive(Debug)]
 pub struct PreparedRequest {
     request: FrozenRequest,
     description: Option<HumanDescription>,
@@ -126,7 +125,6 @@ impl PreparedRequest {
 }
 
 /// Owned standard-I/O capabilities whose shape agrees with the frozen request mode.
-#[derive(Debug)]
 pub enum PreparedIo {
     Pty {
         initial_size: WindowSize,

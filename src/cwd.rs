@@ -9,7 +9,6 @@ use thiserror::Error;
 ///
 /// Keeping the descriptor open binds later execution to the same directory object even if a
 /// pathname used to open it is renamed or replaced.
-#[derive(Debug)]
 pub struct WorkingDirectoryFd {
     fd: OwnedFd,
 }

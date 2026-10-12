@@ -23,7 +23,6 @@ const REQUIRED_SEALS: SealFlag = SealFlag::F_SEAL_WRITE
 ///
 /// The type establishes immutability of the file contents and size. It deliberately does not claim
 /// that a descriptor received by the executor can be proven to originate from `memfd_create(2)`.
-#[derive(Debug)]
 pub struct SealedRequestFd {
     file: File,
 }

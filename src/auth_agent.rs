@@ -11,7 +11,6 @@ use tokio::process::{Child, Command};
 
 const PKTTYAGENT_PATH: &str = "/usr/bin/pkttyagent";
 
-#[derive(Debug)]
 pub struct AuthenticationAgent {
     child: Option<Child>,
 }

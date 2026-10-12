@@ -66,7 +66,6 @@ pub enum CommandOutcome {
 }
 
 /// Resources retained through authorization and consumed exactly once for launch.
-#[derive(Debug)]
 pub struct LaunchRequest {
     request: FrozenRequest,
     cwd: WorkingDirectoryFd,
@@ -198,13 +197,11 @@ fn transient_properties(prepared: &PreparedLaunch) -> Vec<(&'static str, Value<'
 
 /// Successful startup handle. The PTY master is present only for PTY requests and is not exposed
 /// until systemd reports the `Type=exec` start job as `done`.
-#[derive(Debug)]
 pub struct StartedUnit {
     pub pty_master: Option<OwnedFd>,
     pub completion: UnitCompletion,
 }
 
-#[derive(Debug)]
 pub struct UnitCompletion {
     receiver: oneshot::Receiver<Result<CommandOutcome, LaunchError>>,
 }
