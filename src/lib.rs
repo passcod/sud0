@@ -19,17 +19,13 @@ pub mod sealed_request;
 pub mod terminal;
 
 pub use broker_auth::{
-    AuthorizationError, AuthorizationOutcome, AuthorizationRequest, CallerIdentity, Cancellation,
-    CancellationReason,
+    AuthorizationOutcome, AuthorizationRequest, CallerIdentity, Cancellation, CancellationReason,
 };
-pub use broker_service::{
-    BrokerDbusError, BrokerManager, InvocationProxy, InvocationStatusWire, ManagerProxy,
-};
+pub use broker_service::{BrokerManager, InvocationProxy, InvocationStatusWire, ManagerProxy};
 pub use broker_systemd::{
-    CommandOutcome, LaunchError, LaunchRequest, StartedUnit, SystemdLauncher, UnitCompletion,
-    map_service_outcome, set_pty_window_size,
+    CommandOutcome, LaunchError, LaunchRequest, StartedUnit, SystemdLauncher, set_pty_window_size,
 };
-pub use broker_wire::{PrepareError, PreparedIo, PreparedRequest, RunWire, StdioWire, WindowSize};
+pub use broker_wire::{PreparedIo, PreparedRequest, RunWire, StdioWire, WindowSize};
 pub use cwd::{WorkingDirectoryError, WorkingDirectoryFd};
 pub use error::{DescriptionError, ProtocolError, RequestError};
 pub use prompt::{HumanDescription, PromptTemplate, PromptTemplateError};

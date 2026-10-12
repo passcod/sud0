@@ -58,7 +58,7 @@ trait SystemdService {
 }
 
 /// A service completion value that preserves normal exits and signals without shell conventions.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum CommandOutcome {
     Exited(i32),
     Signaled(i32),
@@ -84,7 +84,12 @@ impl LaunchRequest {
         let sealed = SealedRequestFd::create(&self.request)?;
         let io = match self.io {
             PreparedIo::Pty { initial_size } => {
-                let winsize = to_winsize(initial_size);
+                let winsize = Winsize {
+                    ws_row: initial_size.rows,
+                    ws_col: initial_size.columns,
+                    ws_xpixel: initial_size.x_pixels,
+                    ws_ypixel: initial_size.y_pixels,
+                };
                 let pty = openpty(Some(&winsize), None).map_err(LaunchError::OpenPty)?;
                 LaunchIo::Pty {
                     master: pty.master,
@@ -106,15 +111,6 @@ impl LaunchRequest {
             cwd: self.cwd,
             io,
         })
-    }
-}
-
-fn to_winsize(size: WindowSize) -> Winsize {
-    Winsize {
-        ws_row: size.rows,
-        ws_col: size.columns,
-        ws_xpixel: size.x_pixels,
-        ws_ypixel: size.y_pixels,
     }
 }
 
@@ -161,13 +157,6 @@ impl LaunchIo {
                 stdout,
                 stderr,
             } => [stdin, stdout, stderr],
-        }
-    }
-
-    fn take_master(self) -> Option<OwnedFd> {
-        match self {
-            Self::Pty { master, .. } => Some(master),
-            Self::Pipe { .. } => None,
         }
     }
 }
@@ -293,7 +282,7 @@ impl SystemdLauncher {
                         if args.result() == "done" {
                             break Ok(());
                         }
-                        break Err(LaunchError::StartupJob(args.result().to_owned()));
+                        break Err(LaunchError::StartupJob);
                     }
                 }
             }
@@ -318,7 +307,10 @@ impl SystemdLauncher {
             let _ = track_completion(&self.connection, &unit_name, unit_path, cancellation).await;
             return Err(error);
         }
-        let pty_master = prepared.io.take_master();
+        let pty_master = match prepared.io {
+            LaunchIo::Pty { master, .. } => Some(master),
+            LaunchIo::Pipe { .. } => None,
+        };
         let connection = self.connection.clone();
         let tracker_name = unit_name.clone();
         let (completion_tx, completion) = oneshot::channel();
@@ -463,8 +455,8 @@ pub enum LaunchError {
     Cleanup(#[source] zbus::Error),
     #[error("systemd signal stream ended")]
     SignalStreamEnded,
-    #[error("transient service startup failed: {0}")]
-    StartupJob(String),
+    #[error("transient service startup failed")]
+    StartupJob,
     #[error("invocation was cancelled")]
     Cancelled,
     #[error("unit completion tracker stopped unexpectedly")]

@@ -155,7 +155,7 @@ impl Cancellation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum AuthorizationOutcome {
     Authorized,
     Denied,
