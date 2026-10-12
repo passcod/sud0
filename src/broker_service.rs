@@ -575,7 +575,7 @@ async fn run_pipeline(pipeline: RunPipeline) {
             shared.update(InvocationStatusWire::terminal_phase(PHASE_DENIED, "denied"));
             return;
         }
-        AuthorizationOutcome::Cancelled(_) => {
+        AuthorizationOutcome::Cancelled => {
             shared.update(InvocationStatusWire::terminal_phase(
                 PHASE_CANCELLED,
                 "cancelled",

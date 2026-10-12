@@ -159,7 +159,7 @@ impl Cancellation {
 pub enum AuthorizationOutcome {
     Authorized,
     Denied,
-    Cancelled(CancellationReason),
+    Cancelled,
 }
 
 pub(crate) trait Authority {
@@ -182,8 +182,8 @@ pub(crate) async fn authorize<A: Authority>(
     request: &AuthorizationRequest,
     mut cancellation: watch::Receiver<Option<CancellationReason>>,
 ) -> Result<AuthorizationOutcome, AuthorizationError> {
-    if let Some(reason) = *cancellation.borrow() {
-        return Ok(AuthorizationOutcome::Cancelled(reason));
+    if cancellation.borrow().is_some() {
+        return Ok(AuthorizationOutcome::Cancelled);
     }
 
     let check = authority.check(caller, request);
@@ -191,22 +191,17 @@ pub(crate) async fn authorize<A: Authority>(
 
     tokio::select! {
         biased;
-        changed = cancellation.changed() => {
-            let reason = match changed {
-                Ok(()) => (*cancellation.borrow()).unwrap_or(CancellationReason::Shutdown),
-                Err(_) => CancellationReason::Shutdown,
-            };
+        _ = cancellation.changed() => {
             // The result can legitimately report that the check has just completed. Cancellation
             // still wins locally and no authorization result from this check may permit launch.
             let _ = authority.cancel(request.cancellation_id()).await;
-            Ok(AuthorizationOutcome::Cancelled(reason))
+            Ok(AuthorizationOutcome::Cancelled)
         }
         result = &mut check => {
             let result = result?;
-            let cancellation_reason = *cancellation.borrow();
-            if let Some(reason) = cancellation_reason {
+            if cancellation.borrow().is_some() {
                 let _ = authority.cancel(request.cancellation_id()).await;
-                return Ok(AuthorizationOutcome::Cancelled(reason));
+                return Ok(AuthorizationOutcome::Cancelled);
             }
             Ok(if result {
                 AuthorizationOutcome::Authorized
@@ -407,10 +402,7 @@ mod tests {
         assert!(state.is_pending());
         cancellation.cancel(CancellationReason::Caller);
 
-        assert_eq!(
-            future.await.unwrap(),
-            AuthorizationOutcome::Cancelled(CancellationReason::Caller)
-        );
+        assert_eq!(future.await.unwrap(), AuthorizationOutcome::Cancelled);
         let calls = calls.lock().unwrap();
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0], format!("check:{}", request.cancellation_id()));
@@ -437,10 +429,7 @@ mod tests {
         release.notify_one();
         cancellation.cancel(CancellationReason::OwnerLost);
 
-        assert_eq!(
-            future.await.unwrap(),
-            AuthorizationOutcome::Cancelled(CancellationReason::OwnerLost)
-        );
+        assert_eq!(future.await.unwrap(), AuthorizationOutcome::Cancelled);
     }
 
     #[tokio::test]
