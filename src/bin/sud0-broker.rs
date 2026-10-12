@@ -41,18 +41,13 @@ async fn run() -> Result<(), BrokerError> {
 }
 
 async fn wait_for_shutdown() -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use tokio::signal::unix::{SignalKind, signal};
+    use tokio::signal::unix::{SignalKind, signal};
 
-        let mut terminate = signal(SignalKind::terminate())?;
-        tokio::select! {
-            result = tokio::signal::ctrl_c() => result,
-            _ = terminate.recv() => Ok(()),
-        }
+    let mut terminate = signal(SignalKind::terminate())?;
+    tokio::select! {
+        result = tokio::signal::ctrl_c() => result,
+        _ = terminate.recv() => Ok(()),
     }
-    #[cfg(not(unix))]
-    tokio::signal::ctrl_c().await
 }
 
 #[derive(Debug, thiserror::Error)]

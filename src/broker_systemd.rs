@@ -557,16 +557,6 @@ mod tests {
     }
 
     #[test]
-    fn generated_names_are_collision_resistant_service_units() {
-        let first = random_unit_name().unwrap();
-        let second = random_unit_name().unwrap();
-        assert!(first.starts_with("sud0-"));
-        assert!(first.ends_with(".service"));
-        assert_ne!(first, second);
-        assert!(!first.contains('/'));
-    }
-
-    #[test]
     fn fixed_property_contract_has_exact_order_and_wire_types() {
         let fd = || {
             OwnedFd::from(

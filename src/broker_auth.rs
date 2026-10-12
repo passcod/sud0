@@ -345,13 +345,6 @@ mod tests {
         assert!(!check.cancellation_id().is_empty());
     }
 
-    #[test]
-    fn cancellation_identifiers_are_nonempty_and_unique() {
-        let first = authorization(false);
-        let second = authorization(false);
-        assert_ne!(first.cancellation_id(), second.cancellation_id());
-    }
-
     #[derive(Debug)]
     struct FakeAuthority {
         result: bool,

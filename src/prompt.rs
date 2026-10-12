@@ -147,22 +147,17 @@ fn push_sanitized(output: &mut String, value: &str) {
             '\n' => output.push_str("\\n"),
             '\r' => output.push_str("\\r"),
             '\t' => output.push_str("\\t"),
-            '<' | '>' | '&' => push_unicode_escape(output, character),
+            '<' | '>' | '&' => output.extend(character.escape_unicode()),
             character
                 if character.is_control()
                     || is_visual_line_break(character)
                     || is_bidi_control(character) =>
             {
-                push_unicode_escape(output, character);
+                output.extend(character.escape_unicode());
             }
             character => output.push(character),
         }
     }
-}
-
-fn push_unicode_escape(output: &mut String, character: char) {
-    use std::fmt::Write;
-    write!(output, "\\u{{{:x}}}", character as u32).expect("writing to a String cannot fail");
 }
 
 const fn is_visual_line_break(character: char) -> bool {

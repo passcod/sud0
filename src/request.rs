@@ -161,7 +161,6 @@ fn is_protected_environment_name(name: &str) -> bool {
         || name.starts_with("RUBY")
         || name.starts_with("GEM_")
         || name.starts_with("NODE_")
-        || name == "NODE_PATH"
         || name.starts_with("JAVA_TOOL_OPTIONS")
         || name.starts_with("JDK_JAVA_OPTIONS")
         || name.starts_with("CLASSPATH")
