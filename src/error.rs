@@ -63,7 +63,7 @@ pub enum ProtocolError {
 }
 
 /// A human description exceeds its independent input bound.
-#[derive(Debug, PartialEq, Eq, Error)]
+#[derive(Debug, Error)]
 pub enum DescriptionError {
     #[error("description has {actual} bytes; the maximum is {maximum}")]
     TooLong { actual: usize, maximum: usize },
