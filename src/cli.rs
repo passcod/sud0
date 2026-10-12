@@ -1,7 +1,7 @@
 use clap::Parser;
 
 /// Run a command as root.
-#[derive(Debug, Parser)]
+#[derive(Parser)]
 #[command(name = "sud0", version, about, trailing_var_arg = true)]
 pub struct Cli {
     /// Human-readable reason shown in the authentication prompt

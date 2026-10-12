@@ -33,7 +33,7 @@ impl WindowSize {
 /// D-Bus has no sum type, so the wire form carries an explicit discriminator and a descriptor array.
 /// `PTY` is encoded as kind `0` with no descriptors. `Pipe` is kind `1` with stdin, stdout, and
 /// stderr in that exact order. The broker consumes and validates this value before authorization.
-#[derive(Debug, serde::Serialize, serde::Deserialize, Type)]
+#[derive(serde::Serialize, serde::Deserialize, Type)]
 pub struct StdioWire {
     pub kind: u8,
     pub descriptors: Vec<ZOwnedFd>,
@@ -62,7 +62,7 @@ impl StdioWire {
 ///
 /// The UTF-8 execution request uses the private Postcard protocol. Presentation data and descriptor
 /// capabilities remain separate from execution data.
-#[derive(Debug, serde::Serialize, serde::Deserialize, Type)]
+#[derive(serde::Serialize, serde::Deserialize, Type)]
 pub struct RunWire {
     pub request: Vec<u8>,
     pub description: Optional<String>,
