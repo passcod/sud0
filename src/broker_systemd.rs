@@ -7,7 +7,9 @@ use tokio::sync::{oneshot, watch};
 use zbus::zvariant::{Fd, OwnedObjectPath, Value};
 
 use crate::broker_auth::CancellationReason;
-use crate::constants::{CWD_FD_NAME, EXECUTOR_PATH, REQUEST_FD_NAME, TRANSIENT_UNIT_DESCRIPTION};
+use crate::constants::{
+    CWD_FD_NAME, EXECUTOR_PATH, REQUEST_FD_NAME, TRANSIENT_UNIT_DESCRIPTION, random_identifier,
+};
 use crate::{
     FrozenRequest, PreparedIo, SealedRequestError, SealedRequestFd, WindowSize, WorkingDirectoryFd,
 };
@@ -413,9 +415,10 @@ fn map_service_outcome(result: &str, code: i32, status: i32) -> CommandOutcome {
 }
 
 fn random_unit_name() -> Result<String, LaunchError> {
-    let mut random = [0_u8; 16];
-    getrandom::fill(&mut random).map_err(LaunchError::Random)?;
-    Ok(format!("sud0-{}.service", hex::encode(random)))
+    Ok(format!(
+        "sud0-{}.service",
+        random_identifier().map_err(LaunchError::Random)?
+    ))
 }
 
 #[derive(Debug, Error)]

@@ -1,5 +1,7 @@
 //! Security contracts and limits shared by every protocol participant.
 
+use std::fmt::Write as _;
+
 /// The systemd activation descriptor name accepted for the sealed request.
 pub const REQUEST_FD_NAME: &str = "sud0-request";
 /// The descriptor assigned to the sealed request by systemd activation.
@@ -66,3 +68,13 @@ pub const MAX_CWD_DISPLAY_BYTES: usize = 512;
 pub const MAX_PROMPT_TEMPLATE_BYTES: usize = 4096;
 /// Maximum rendered prompt size after placeholder expansion.
 pub const MAX_PROMPT_BYTES: usize = 8192;
+
+pub(crate) fn random_identifier() -> Result<String, getrandom::Error> {
+    let mut random = [0_u8; 16];
+    getrandom::fill(&mut random)?;
+    let mut identifier = String::with_capacity(32);
+    for byte in random {
+        write!(identifier, "{byte:02x}").unwrap();
+    }
+    Ok(identifier)
+}

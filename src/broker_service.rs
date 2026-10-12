@@ -13,6 +13,7 @@ use zbus::zvariant::{OwnedFd as ZOwnedFd, OwnedObjectPath, Type};
 use zbus::{Connection, DBusError, interface};
 
 use crate::broker_auth::authorize;
+use crate::constants::random_identifier;
 use crate::{
     AuthorizationOutcome, AuthorizationRequest, CallerIdentity, Cancellation, CancellationReason,
     CommandOutcome, LaunchError, LaunchRequest, PreparedRequest, PromptTemplate, RunWire,
@@ -831,10 +832,9 @@ async fn name_has_owner(connection: &Connection, sender: &str) -> Result<bool, B
 }
 
 fn random_invocation_path() -> Result<OwnedObjectPath, BrokerDbusError> {
-    let mut random = [0_u8; 16];
-    getrandom::fill(&mut random)
+    let identifier = random_identifier()
         .map_err(|_| BrokerDbusError::Failed("identifier generation failed".to_owned()))?;
-    let path = format!("/nz/passcod/sud0/invocation/{}", hex::encode(random));
+    let path = format!("/nz/passcod/sud0/invocation/{identifier}");
     OwnedObjectPath::try_from(path)
         .map_err(|_| BrokerDbusError::Failed("identifier generation failed".to_owned()))
 }

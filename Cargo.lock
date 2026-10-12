@@ -524,7 +524,6 @@ dependencies = [
  "clap",
  "futures-util",
  "getrandom",
- "hex",
  "leon",
  "libc",
  "nix",

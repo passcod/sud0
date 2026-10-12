@@ -6,10 +6,8 @@ use thiserror::Error;
 use tokio::sync::watch;
 use zbus::zvariant::{Fd, Value};
 
-use crate::constants::POLKIT_RUN_ACTION;
+use crate::constants::{POLKIT_RUN_ACTION, random_identifier};
 use crate::{FrozenRequest, HumanDescription, PromptTemplate, PromptTemplateError};
-
-const POLKIT_ALLOW_USER_INTERACTION: u32 = 1;
 
 #[zbus::proxy(
     interface = "org.freedesktop.PolicyKit1.Authority",
@@ -90,16 +88,13 @@ impl AuthorizationRequest {
     ) -> Result<Self, AuthorizationError> {
         Ok(Self {
             message: template.render(request, description, cwd_path)?,
-            flags: u32::from(allow_interaction) * POLKIT_ALLOW_USER_INTERACTION,
-            cancellation_id: random_identifier("sud0-auth")?,
+            flags: u32::from(allow_interaction),
+            cancellation_id: format!(
+                "sud0-auth-{}",
+                random_identifier().map_err(AuthorizationError::Random)?
+            ),
         })
     }
-}
-
-fn random_identifier(prefix: &str) -> Result<String, AuthorizationError> {
-    let mut random = [0_u8; 16];
-    getrandom::fill(&mut random).map_err(AuthorizationError::Random)?;
-    Ok(format!("{prefix}-{}", hex::encode(random)))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
