@@ -41,8 +41,6 @@ install: ensure-prefix
 	$(INSTALL) -Dm644 dist/systemd/system/sud0-broker.service "$(SYSTEMDUNITDIR)/sud0-broker.service"
 	$(INSTALL) -Dm644 LICENSE-MIT "$(DATADIR)/licenses/sud0/LICENSE-MIT"
 	$(INSTALL) -Dm644 LICENSE-APACHE "$(DATADIR)/licenses/sud0/LICENSE-APACHE"
-	$(INSTALL) -Dm644 README.md "$(DATADIR)/doc/sud0/README.md"
-	$(INSTALL) -Dm644 SECURITY.md "$(DATADIR)/doc/sud0/SECURITY.md"
 
 uninstall: ensure-prefix
 	rm -f -- "$(BINDIR)/sud0"
@@ -53,5 +51,4 @@ uninstall: ensure-prefix
 	rm -f -- "$(DATADIR)/dbus-1/system-services/nz.passcod.sud0.service"
 	rm -f -- "$(SYSTEMDUNITDIR)/sud0-broker.service"
 	rm -f -- "$(DATADIR)/licenses/sud0/LICENSE-MIT" "$(DATADIR)/licenses/sud0/LICENSE-APACHE"
-	rm -f -- "$(DATADIR)/doc/sud0/README.md" "$(DATADIR)/doc/sud0/SECURITY.md"
-	rmdir --ignore-fail-on-non-empty -- "$(DESTDIR)/etc/sud0" $(LIBEXECDIR) "$(DATADIR)/licenses/sud0" "$(DATADIR)/doc/sud0" 2>/dev/null || true
+	rmdir --ignore-fail-on-non-empty -- "$(DESTDIR)/etc/sud0" $(LIBEXECDIR) "$(DATADIR)/licenses/sud0" 2>/dev/null || true

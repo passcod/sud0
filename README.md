@@ -30,13 +30,12 @@ $ sud0 --setenv TERM --pty /usr/bin/bash
 ## Setup
 
 ```console
-$ make release
 $ make check
 # make install
 # systemctl daemon-reload
 ```
 
-Do not run `make release` or `make check` as root.
+Do not run `make check` as root.
 
 Alternatively, on Arch Linux:
 

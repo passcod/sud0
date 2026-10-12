@@ -12,8 +12,6 @@ expected=$(cat <<'FILES'
 644 usr/lib/systemd/system/sud0-broker.service
 644 usr/share/dbus-1/system-services/nz.passcod.sud0.service
 644 usr/share/dbus-1/system.d/nz.passcod.sud0.conf
-644 usr/share/doc/sud0/README.md
-644 usr/share/doc/sud0/SECURITY.md
 644 usr/share/licenses/sud0/LICENSE-APACHE
 644 usr/share/licenses/sud0/LICENSE-MIT
 644 usr/share/polkit-1/actions/nz.passcod.sud0.policy
