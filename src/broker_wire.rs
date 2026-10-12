@@ -60,8 +60,8 @@ impl StdioWire {
 
 /// Complete, bounded client input for one broker run request.
 ///
-/// The execution request is the existing canonical byte-preserving protocol rather than a D-Bus
-/// string model. Presentation data and descriptor capabilities remain separate from execution data.
+/// The UTF-8 execution request uses the private Postcard protocol. Presentation data and descriptor
+/// capabilities remain separate from execution data.
 #[derive(Debug, serde::Serialize, serde::Deserialize, Type)]
 pub struct RunWire {
     pub request: Vec<u8>,
