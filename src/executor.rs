@@ -282,7 +282,6 @@ fn prepare_terminal(mode: IoMode) -> Result<(), ExecutorError> {
     }
 }
 
-#[derive(Debug)]
 struct TerminalSnapshot {
     pid: libc::pid_t,
     process_group: libc::pid_t,
@@ -290,7 +289,6 @@ struct TerminalSnapshot {
     terminals: [TerminalState; 3],
 }
 
-#[derive(Debug)]
 struct TerminalState {
     device: libc::dev_t,
     terminal_session: Option<libc::pid_t>,

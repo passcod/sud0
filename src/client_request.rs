@@ -7,7 +7,6 @@ use thiserror::Error;
 use crate::cli::Cli;
 use crate::{FrozenRequest, HumanDescription, IoMode, WorkingDirectoryError, WorkingDirectoryFd};
 
-#[derive(Debug)]
 pub struct PreparedClientRequest {
     pub request: FrozenRequest,
     pub description: Option<HumanDescription>,
