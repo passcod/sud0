@@ -36,8 +36,6 @@ mkdir -p "$scratch/root/usr/lib/systemd/system" "$scratch/root/usr/lib/sud0"
 cp "$repo/dist/systemd/system/sud0-broker.service" "$scratch/root/usr/lib/systemd/system/"
 cp /usr/lib/systemd/system/dbus.socket "$scratch/root/usr/lib/systemd/system/"
 cp "$repo/target/release/sud0-broker" "$scratch/root/usr/lib/sud0/"
-mkdir -p "$scratch/root/etc/sud0"
-cp "$repo/dist/prompt.template" "$scratch/root/etc/sud0/"
 systemd-analyze verify --root="$scratch/root" --man=no --generators=no \
     --recursive-errors=no sud0-broker.service
 

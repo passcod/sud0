@@ -1,6 +1,6 @@
 [Unit]
 Description=sud0 privilege broker
-Documentation=man:sud0(1) https://github.com/passcod/sud0
+Documentation=https://github.com/passcod/sud0
 
 [Service]
 Type=dbus

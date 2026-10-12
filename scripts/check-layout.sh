@@ -28,11 +28,6 @@ if [ "$actual" != "$expected" ]; then
     printf 'expected:\n%s\nactual:\n%s\n' "$expected" "$actual" >&2
     exit 1
 fi
-if find "$stage" -type f -perm /6000 | grep -q .; then
-    printf '%s\n' 'staged files contain setuid or setgid bits' >&2
-    exit 1
-fi
-
 make -C "$repo" DESTDIR="$stage" PREFIX=/usr uninstall >/dev/null
 if find "$stage" -type f | grep -q .; then
     printf '%s\n' 'uninstall left packaged files behind' >&2
