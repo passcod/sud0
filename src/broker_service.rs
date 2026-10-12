@@ -108,13 +108,11 @@ impl InvocationStatusWire {
     }
 }
 
-#[derive(Debug)]
 struct InvocationState {
     status: InvocationStatusWire,
     pty_master: Option<OwnedFd>,
 }
 
-#[derive(Debug)]
 struct SharedInvocation {
     owner: String,
     cancellation: Cancellation,
@@ -188,16 +186,15 @@ impl SharedInvocation {
     }
 }
 
-#[derive(Debug)]
 struct AbortOnDrop(tokio::task::JoinHandle<()>);
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct PipelineState {
     active: usize,
     stopping: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct PipelineRegistry {
     state: Mutex<PipelineState>,
     idle: Notify,
@@ -227,7 +224,6 @@ impl PipelineRegistry {
     }
 }
 
-#[derive(Debug)]
 struct PipelinePermit(Arc<PipelineRegistry>);
 
 impl Drop for PipelinePermit {
@@ -248,7 +244,6 @@ impl Drop for AbortOnDrop {
     }
 }
 
-#[derive(Debug)]
 struct InvocationPermit {
     owner: String,
     limits: Arc<BrokerLimits>,
@@ -267,7 +262,6 @@ impl Drop for InvocationPermit {
     }
 }
 
-#[derive(Debug)]
 struct InvocationObject {
     shared: Arc<SharedInvocation>,
     connection: Connection,
@@ -372,7 +366,7 @@ impl InvocationObject {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct BrokerLimits {
     invocations: Mutex<HashMap<String, usize>>,
 }
