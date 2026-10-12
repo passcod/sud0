@@ -16,8 +16,8 @@ use crate::broker_auth::authorize;
 use crate::constants::random_identifier;
 use crate::{
     AuthorizationOutcome, AuthorizationRequest, CallerIdentity, Cancellation, CancellationReason,
-    CommandOutcome, LaunchError, LaunchRequest, PreparedRequest, PromptTemplate, RunWire,
-    SystemdLauncher, WindowSize, set_pty_window_size,
+    CommandOutcome, LaunchError, PreparedRequest, PromptTemplate, RunWire, SystemdLauncher,
+    WindowSize, set_pty_window_size,
 };
 
 const PHASE_AUTHORIZING: u8 = 0;
@@ -606,10 +606,7 @@ async fn run_pipeline(pipeline: RunPipeline) {
     shared.update(InvocationStatusWire::phase(PHASE_STARTING));
     let (request, cwd, io) = prepared.into_launch_parts();
     let started = match launcher
-        .launch(
-            LaunchRequest::new(request, cwd, io),
-            cancellation.subscribe(),
-        )
+        .launch(request, cwd, io, cancellation.subscribe())
         .await
     {
         Ok(started) => started,

@@ -67,52 +67,39 @@ pub enum CommandOutcome {
     ServiceFailure,
 }
 
-/// Resources retained through authorization and consumed exactly once for launch.
-pub struct LaunchRequest {
+fn prepare_launch(
     request: FrozenRequest,
     cwd: WorkingDirectoryFd,
     io: PreparedIo,
-}
-
-impl LaunchRequest {
-    pub const fn new(request: FrozenRequest, cwd: WorkingDirectoryFd, io: PreparedIo) -> Self {
-        Self { request, cwd, io }
-    }
-
-    fn prepare(self) -> Result<PreparedLaunch, LaunchError> {
-        // This is intentionally the first sealed-request creation point. Callers construct a
-        // LaunchRequest only after authorization and the final owner recheck.
-        let sealed = SealedRequestFd::create(&self.request)?;
-        let io = match self.io {
-            PreparedIo::Pty { initial_size } => {
-                let winsize = Winsize {
-                    ws_row: initial_size.rows,
-                    ws_col: initial_size.columns,
-                    ws_xpixel: initial_size.x_pixels,
-                    ws_ypixel: initial_size.y_pixels,
-                };
-                let pty = openpty(Some(&winsize), None).map_err(LaunchError::OpenPty)?;
-                LaunchIo::Pty {
-                    master: pty.master,
-                    slave: pty.slave,
-                }
+) -> Result<PreparedLaunch, LaunchError> {
+    // This is intentionally the first sealed-request creation point, after authorization and the
+    // final owner recheck.
+    let sealed = SealedRequestFd::create(&request)?;
+    let io = match io {
+        PreparedIo::Pty { initial_size } => {
+            let winsize = Winsize {
+                ws_row: initial_size.rows,
+                ws_col: initial_size.columns,
+                ws_xpixel: initial_size.x_pixels,
+                ws_ypixel: initial_size.y_pixels,
+            };
+            let pty = openpty(Some(&winsize), None).map_err(LaunchError::OpenPty)?;
+            LaunchIo::Pty {
+                master: pty.master,
+                slave: pty.slave,
             }
-            PreparedIo::Pipe {
-                stdin,
-                stdout,
-                stderr,
-            } => LaunchIo::Pipe {
-                stdin,
-                stdout,
-                stderr,
-            },
-        };
-        Ok(PreparedLaunch {
-            sealed,
-            cwd: self.cwd,
-            io,
-        })
-    }
+        }
+        PreparedIo::Pipe {
+            stdin,
+            stdout,
+            stderr,
+        } => LaunchIo::Pipe {
+            stdin,
+            stdout,
+            stderr,
+        },
+    };
+    Ok(PreparedLaunch { sealed, cwd, io })
 }
 
 /// Applies a validated size to a retained PTY master.
@@ -225,13 +212,15 @@ impl SystemdLauncher {
 
     pub async fn launch(
         &self,
-        request: LaunchRequest,
+        request: FrozenRequest,
+        cwd: WorkingDirectoryFd,
+        io: PreparedIo,
         mut cancellation: watch::Receiver<Option<CancellationReason>>,
     ) -> Result<StartedUnit, LaunchError> {
         if cancellation.borrow().is_some() {
             return Err(LaunchError::Cancelled);
         }
-        let prepared = request.prepare()?;
+        let prepared = prepare_launch(request, cwd, io)?;
         let unit_name = random_unit_name()?;
         let manager = SystemdManagerProxy::new(&self.connection)
             .await
@@ -463,7 +452,7 @@ mod tests {
 
     #[test]
     fn pty_is_allocated_with_requested_initial_size_after_launch_preparation() {
-        let prepared = LaunchRequest::new(
+        let prepared = prepare_launch(
             request(IoMode::Pty),
             cwd(),
             PreparedIo::Pty {
@@ -475,7 +464,6 @@ mod tests {
                 },
             },
         )
-        .prepare()
         .unwrap();
         let LaunchIo::Pty { master, slave } = prepared.io else {
             panic!("expected PTY");
@@ -500,7 +488,7 @@ mod tests {
         });
         let raw = descriptors.each_ref().map(AsRawFd::as_raw_fd);
         let [stdin, stdout, stderr] = descriptors;
-        let prepared = LaunchRequest::new(
+        let prepared = prepare_launch(
             request(IoMode::Pipe),
             cwd(),
             PreparedIo::Pipe {
@@ -509,7 +497,6 @@ mod tests {
                 stderr,
             },
         )
-        .prepare()
         .unwrap();
         assert_eq!(prepared.io.standard_fds().map(AsRawFd::as_raw_fd), raw);
     }
@@ -549,7 +536,7 @@ mod tests {
                     .unwrap(),
             )
         };
-        let prepared = LaunchRequest::new(
+        let prepared = prepare_launch(
             request(IoMode::Pipe),
             cwd(),
             PreparedIo::Pipe {
@@ -558,7 +545,6 @@ mod tests {
                 stderr: fd(),
             },
         )
-        .prepare()
         .unwrap();
         let properties = transient_properties(&prepared);
         let actual: Vec<_> = properties

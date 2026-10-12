@@ -23,7 +23,7 @@ pub use broker_auth::{
 };
 pub use broker_service::{BrokerManager, InvocationProxy, InvocationStatusWire, ManagerProxy};
 pub use broker_systemd::{
-    CommandOutcome, LaunchError, LaunchRequest, StartedUnit, SystemdLauncher, set_pty_window_size,
+    CommandOutcome, LaunchError, StartedUnit, SystemdLauncher, set_pty_window_size,
 };
 pub use broker_wire::{PreparedIo, PreparedRequest, RunWire, StdioWire, WindowSize};
 pub use cwd::{WorkingDirectoryError, WorkingDirectoryFd};
