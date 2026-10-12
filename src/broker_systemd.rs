@@ -61,10 +61,7 @@ trait SystemdService {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandOutcome {
     Exited(i32),
-    Signaled {
-        signal: i32,
-        core_dumped: bool,
-    },
+    Signaled(i32),
     ServiceFailure {
         result: String,
         code: i32,
@@ -439,14 +436,9 @@ async fn track_completion_inner(
 pub fn map_service_outcome(result: &str, code: i32, status: i32) -> CommandOutcome {
     match (result, code) {
         ("success" | "exit-code", libc::CLD_EXITED) => CommandOutcome::Exited(status),
-        ("success" | "signal", libc::CLD_KILLED) => CommandOutcome::Signaled {
-            signal: status,
-            core_dumped: false,
-        },
-        ("success" | "core-dump", libc::CLD_DUMPED) => CommandOutcome::Signaled {
-            signal: status,
-            core_dumped: true,
-        },
+        ("success" | "signal", libc::CLD_KILLED) | ("success" | "core-dump", libc::CLD_DUMPED) => {
+            CommandOutcome::Signaled(status)
+        }
         _ => CommandOutcome::ServiceFailure {
             result: result.to_owned(),
             code,
@@ -568,17 +560,11 @@ mod tests {
         );
         assert_eq!(
             map_service_outcome("success", libc::CLD_KILLED, libc::SIGTERM),
-            CommandOutcome::Signaled {
-                signal: libc::SIGTERM,
-                core_dumped: false
-            }
+            CommandOutcome::Signaled(libc::SIGTERM)
         );
         assert_eq!(
             map_service_outcome("success", libc::CLD_DUMPED, libc::SIGSEGV),
-            CommandOutcome::Signaled {
-                signal: libc::SIGSEGV,
-                core_dumped: true
-            }
+            CommandOutcome::Signaled(libc::SIGSEGV)
         );
         assert_eq!(
             map_service_outcome("protocol", 0, 0),

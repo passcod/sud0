@@ -169,7 +169,7 @@ impl Invocation {
             if status.phase == PHASE_RUNNING {
                 return Ok(Startup::Running);
             }
-            if status.terminal {
+            if status.is_terminal() {
                 return Ok(Startup::Terminal(status));
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -205,12 +205,6 @@ impl Invocation {
             .map_err(ClientError::Broker)
     }
 
-    pub async fn release(&self) -> Result<(), ClientError> {
-        self.proxy.release().await.map_err(ClientError::Broker)?;
-        self.cleanup_needed.store(false, Ordering::Release);
-        Ok(())
-    }
-
     pub async fn cancel_and_release(&self) {
         self.cancel().await;
         let _ = self.wait().await;
@@ -231,7 +225,7 @@ impl Drop for Invocation {
 }
 
 pub fn exit_code(status: &InvocationStatusWire) -> Result<u8, ClientError> {
-    if !status.terminal {
+    if !status.is_terminal() {
         return Err(ClientError::InvalidStatus);
     }
     if status.phase == PHASE_COMPLETE && status.outcome == OUTCOME_EXITED {
@@ -291,11 +285,9 @@ mod tests {
     fn status(phase: u8, outcome: u8, code: i32, signal: i32) -> InvocationStatusWire {
         InvocationStatusWire {
             phase,
-            terminal: true,
             outcome,
             status: code,
             signal,
-            core_dumped: false,
             error_category: String::new(),
         }
     }

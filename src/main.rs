@@ -82,8 +82,8 @@ async fn run(cli: Cli) -> Result<u8, AppError> {
         .run(prepared, mode, initial_size, allow_interaction)
         .await?;
     match startup {
-        Startup::Terminal(status) => {
-            invocation.release().await?;
+        Startup::Terminal(_) => {
+            let status = invocation.wait().await?;
             exit_code(&status).map_err(AppError::Client)
         }
         Startup::Running => match mode {

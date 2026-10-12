@@ -40,23 +40,26 @@ const OUTCOME_SERVICE_FAILURE: u8 = 3;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct InvocationStatusWire {
     pub phase: u8,
-    pub terminal: bool,
     pub outcome: u8,
     pub status: i32,
     pub signal: i32,
-    pub core_dumped: bool,
     pub error_category: String,
 }
 
 impl InvocationStatusWire {
+    pub const fn is_terminal(&self) -> bool {
+        matches!(
+            self.phase,
+            PHASE_COMPLETE | PHASE_FAILED | PHASE_CANCELLED | PHASE_DENIED
+        )
+    }
+
     fn authorizing() -> Self {
         Self {
             phase: PHASE_AUTHORIZING,
-            terminal: false,
             outcome: OUTCOME_NONE,
             status: 0,
             signal: 0,
-            core_dumped: false,
             error_category: String::new(),
         }
     }
@@ -72,32 +75,23 @@ impl InvocationStatusWire {
         match outcome {
             CommandOutcome::Exited(status) => Self {
                 phase: PHASE_COMPLETE,
-                terminal: true,
                 outcome: OUTCOME_EXITED,
                 status,
                 signal: 0,
-                core_dumped: false,
                 error_category: String::new(),
             },
-            CommandOutcome::Signaled {
-                signal,
-                core_dumped,
-            } => Self {
+            CommandOutcome::Signaled(signal) => Self {
                 phase: PHASE_COMPLETE,
-                terminal: true,
                 outcome: OUTCOME_SIGNALED,
                 status: 0,
                 signal,
-                core_dumped,
                 error_category: String::new(),
             },
             CommandOutcome::ServiceFailure { .. } => Self {
                 phase: PHASE_FAILED,
-                terminal: true,
                 outcome: OUTCOME_SERVICE_FAILURE,
                 status: 0,
                 signal: 0,
-                core_dumped: false,
                 error_category: "service-failure".to_owned(),
             },
         }
@@ -106,11 +100,9 @@ impl InvocationStatusWire {
     fn terminal_phase(phase: u8, category: &str) -> Self {
         Self {
             phase,
-            terminal: true,
             outcome: OUTCOME_NONE,
             status: 0,
             signal: 0,
-            core_dumped: false,
             error_category: category.to_owned(),
         }
     }
@@ -162,7 +154,7 @@ impl SharedInvocation {
     }
 
     fn update(&self, status: InvocationStatusWire) {
-        let terminal = status.terminal;
+        let terminal = status.is_terminal();
         self.state.lock().unwrap().status = status;
         self.changed.notify_waiters();
         if terminal {
@@ -173,7 +165,7 @@ impl SharedInvocation {
     async fn wait_until_terminal(&self) {
         loop {
             let notified = self.terminal.notified();
-            if self.state.lock().unwrap().status.terminal {
+            if self.state.lock().unwrap().status.is_terminal() {
                 return;
             }
             notified.await;
@@ -291,7 +283,7 @@ impl InvocationObject {
         loop {
             let notified = self.shared.changed.notified();
             let status = self.shared.state.lock().unwrap().status.clone();
-            if status.terminal {
+            if status.is_terminal() {
                 self.shared.state.lock().unwrap().released = true;
                 self.schedule_removal();
                 return Ok(status);
@@ -342,22 +334,6 @@ impl InvocationObject {
             .ok_or_else(|| BrokerDbusError::NotAvailable("invocation has no PTY".to_owned()))?;
         set_pty_window_size(pty, size)
             .map_err(|_| BrokerDbusError::InvalidRequest("invalid PTY size".to_owned()))
-    }
-
-    async fn release(&self, #[zbus(header)] header: Header<'_>) -> Result<(), BrokerDbusError> {
-        self.shared.check_owner(&header)?;
-        let mut state = self.shared.state.lock().unwrap();
-        if !state.status.terminal {
-            return Err(BrokerDbusError::NotReady(
-                "invocation has not completed".to_owned(),
-            ));
-        }
-        state.released = true;
-        state.pty_master = None;
-        drop(state);
-        self.shared.changed.notify_waiters();
-        self.schedule_removal();
-        Ok(())
     }
 }
 
@@ -882,7 +858,6 @@ pub trait Invocation {
     fn cancel(&self) -> zbus::Result<()>;
     fn take_pty(&self) -> zbus::Result<ZOwnedFd>;
     fn set_window_size(&self, size: WindowSize) -> zbus::Result<()>;
-    fn release(&self) -> zbus::Result<()>;
 }
 
 #[cfg(test)]
@@ -898,7 +873,7 @@ mod tests {
         });
         assert_eq!(status.error_category, "service-failure");
         assert!(!status.error_category.contains("exit-code"));
-        assert!(status.terminal);
+        assert!(status.is_terminal());
     }
 
     #[test]
