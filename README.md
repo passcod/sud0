@@ -12,15 +12,15 @@ Not audited. Do not use in production.
 $ sud0 id
 ```
 
-By default, the auth prompt includes a sanitized argv summary and the descriptor-derived working directory. This can be customized with `/etc/sud0/prompt.template` using `{command}`, `{cwd}`, `{description_line}`, and `{environment_line}`.
+By default (see `/etc/sud0/prompt.template`), the auth prompt includes the command and the working directory.
 
-You can also provide custom text; the command and workdir will be appended:
+You can also provide custom text as a prefix:
 
 ```console
 $ sud0 -d 'editing the SSH config' /usr/bin/nvim /etc/ssh/sshd_config
 ```
 
-Command-line text and imported environment values must be UTF-8. Common sudo/run0 options are also available:
+Some common sudo/run0 options are also available:
 
 ```console
 $ sud0 -D /var/lib/my-service --pipe /usr/bin/find . -maxdepth 1
