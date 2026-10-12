@@ -259,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn values_are_not_reparsed_and_oversize_is_rejected() {
+    fn values_are_not_reparsed_and_presentation_bounds_are_enforced() {
         let description = HumanDescription::new("literal {command}").unwrap();
         let template = PromptTemplate::parse("{description_line}".to_owned()).unwrap();
         assert_eq!(
@@ -268,6 +268,11 @@ mod tests {
                 .unwrap(),
             "\nliteral {command}"
         );
+
+        assert!(matches!(
+            PromptTemplate::parse("x".repeat(MAX_PROMPT_TEMPLATE_BYTES + 1)),
+            Err(PromptTemplateError::TemplateTooLong { .. })
+        ));
         let oversized = "x".repeat(MAX_COMMAND_DISPLAY_BYTES);
         assert!(matches!(
             format_command(&request(&[&oversized])),
@@ -275,6 +280,28 @@ mod tests {
                 field: "command",
                 ..
             })
+        ));
+        let description = HumanDescription::new("<".repeat(MAX_DESCRIPTION_BYTES)).unwrap();
+        assert!(matches!(
+            template.render(&request(&["id"]), Some(&description), "/"),
+            Err(PromptTemplateError::ValueTooLong {
+                field: "description",
+                ..
+            })
+        ));
+        let template = PromptTemplate::parse("{cwd}".to_owned()).unwrap();
+        assert!(matches!(
+            template.render(&request(&["id"]), None, &"<".repeat(MAX_CWD_DISPLAY_BYTES)),
+            Err(PromptTemplateError::ValueTooLong {
+                field: "working directory",
+                ..
+            })
+        ));
+        let template = PromptTemplate::parse("{command}".repeat(9)).unwrap();
+        let command = "x".repeat(MAX_COMMAND_DISPLAY_BYTES - 4);
+        assert!(matches!(
+            template.render(&request(&[&command]), None, "/"),
+            Err(PromptTemplateError::PromptTooLong { .. })
         ));
     }
 }

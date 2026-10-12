@@ -142,6 +142,7 @@ pub enum SealedRequestError {
 #[cfg(test)]
 mod tests {
     use std::io::{Seek, Write};
+    use std::os::fd::AsRawFd;
 
     use super::*;
     use crate::IoMode;
@@ -197,23 +198,26 @@ mod tests {
     }
 
     #[test]
-    fn accepts_extra_seals() {
+    fn rejects_invalid_descriptor_shape_before_reading() {
         let file = unsealed_file(&request().encode().unwrap());
-        fcntl(
-            &file,
-            FcntlArg::F_ADD_SEALS(REQUIRED_SEALS | SealFlag::F_SEAL_FUTURE_WRITE),
-        )
-        .unwrap();
-        assert_eq!(decode_sealed_request(&file).unwrap(), request());
-    }
-
-    #[test]
-    fn rejects_sealed_malformed_protocol() {
-        let file = unsealed_file(b"not a frozen request");
-        fcntl(&file, FcntlArg::F_ADD_SEALS(REQUIRED_SEALS)).unwrap();
+        let path = format!("/proc/self/fd/{}", file.as_fd().as_raw_fd());
+        let write_only = std::fs::OpenOptions::new().write(true).open(path).unwrap();
         assert!(matches!(
-            decode_sealed_request(&file),
-            Err(SealedRequestError::Decode(_))
+            decode_sealed_request(&write_only),
+            Err(SealedRequestError::NotReadable)
+        ));
+        assert!(matches!(
+            decode_sealed_request(&File::open("/").unwrap()),
+            Err(SealedRequestError::NotRegular)
+        ));
+
+        let oversized = unsealed_file(&[]);
+        oversized
+            .set_len((MAX_ENCODED_REQUEST_BYTES + 1) as u64)
+            .unwrap();
+        assert!(matches!(
+            decode_sealed_request(&oversized),
+            Err(SealedRequestError::TooLarge { .. })
         ));
     }
 

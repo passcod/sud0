@@ -864,9 +864,18 @@ mod tests {
             limits.acquire_invocation(":1.7"),
             Err(BrokerDbusError::LimitsExceeded(_))
         ));
-        assert!(limits.acquire_invocation(":1.8").is_ok());
-
         drop(first_owner.pop());
-        assert!(limits.acquire_invocation(":1.7").is_ok());
+        first_owner.push(limits.acquire_invocation(":1.7").unwrap());
+
+        let mut permits = first_owner;
+        for owner in MAX_OWNER_INVOCATIONS..MAX_GLOBAL_INVOCATIONS {
+            permits.push(limits.acquire_invocation(&format!(":1.{owner}")).unwrap());
+        }
+        assert!(matches!(
+            limits.acquire_invocation(":1.next"),
+            Err(BrokerDbusError::LimitsExceeded(_))
+        ));
+        drop(permits.pop());
+        assert!(limits.acquire_invocation(":1.next").is_ok());
     }
 }

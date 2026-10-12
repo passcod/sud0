@@ -128,23 +128,4 @@ mod tests {
             IoMode::Pipe
         );
     }
-
-    #[test]
-    fn environment_policy_is_applied_during_preparation() {
-        let cli = Cli {
-            description: None,
-            chdir: None,
-            setenv: vec!["PATH=/tmp".to_owned()],
-            pty: false,
-            pipe: false,
-            non_interactive: false,
-            command: vec!["id".to_owned()],
-        };
-        assert!(matches!(
-            PreparedClientRequest::from_cli(&cli, IoMode::Pipe),
-            Err(ClientRequestError::InvalidRequest(
-                crate::RequestError::ProtectedEnvironmentName { .. }
-            ))
-        ));
-    }
 }

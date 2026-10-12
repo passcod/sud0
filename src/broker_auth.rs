@@ -357,6 +357,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(check.flags(), 1);
+        assert_eq!(authorization(false).flags(), 0);
         assert_eq!(
             check.message(),
             template

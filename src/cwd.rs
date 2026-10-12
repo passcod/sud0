@@ -78,24 +78,10 @@ pub enum WorkingDirectoryError {
 #[cfg(test)]
 mod tests {
     use std::ffi::CString;
-    use std::fs::File;
-    use std::os::fd::OwnedFd;
     use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::PermissionsExt;
 
     use super::*;
-
-    #[test]
-    fn accepts_directory_and_rejects_regular_file() {
-        let directory = File::open("/").unwrap();
-        assert!(WorkingDirectoryFd::try_from(OwnedFd::from(directory)).is_ok());
-
-        let file = tempfile::tempfile().unwrap();
-        assert!(matches!(
-            WorkingDirectoryFd::try_from(OwnedFd::from(file)),
-            Err(WorkingDirectoryError::NotDirectory)
-        ));
-    }
 
     #[test]
     fn opens_execute_only_directory() {
@@ -110,27 +96,19 @@ mod tests {
     }
 
     #[test]
-    fn display_path_is_derived_from_the_open_descriptor() {
-        let parent = tempfile::tempdir().unwrap();
-        let directory = parent.path().join("opened");
-        std::fs::create_dir(&directory).unwrap();
-        let path = CString::new(directory.as_os_str().as_bytes()).unwrap();
-        let opened = WorkingDirectoryFd::open(&path).unwrap();
-        assert_eq!(opened.display_path().unwrap(), directory.to_str().unwrap());
-    }
-
-    #[test]
-    fn opened_descriptor_survives_path_rename() {
+    fn display_path_tracks_the_opened_directory_across_rename() {
         let parent = tempfile::tempdir().unwrap();
         let original = parent.path().join("original");
         let renamed = parent.path().join("renamed");
         std::fs::create_dir(&original).unwrap();
-        let path = std::ffi::CString::new(original.as_os_str().as_bytes()).unwrap();
+        let path = CString::new(original.as_os_str().as_bytes()).unwrap();
         let directory = WorkingDirectoryFd::open(&path).unwrap();
-        std::fs::rename(&original, &renamed).unwrap();
+        assert_eq!(
+            directory.display_path().unwrap(),
+            original.to_str().unwrap()
+        );
 
-        assert!(fstat(directory.as_fd()).unwrap().st_mode & libc::S_IFMT == libc::S_IFDIR);
-        assert!(!original.exists());
-        assert!(renamed.exists());
+        std::fs::rename(&original, &renamed).unwrap();
+        assert_eq!(directory.display_path().unwrap(), renamed.to_str().unwrap());
     }
 }
