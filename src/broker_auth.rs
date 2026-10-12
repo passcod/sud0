@@ -114,7 +114,7 @@ fn random_identifier(prefix: &str) -> Result<String, AuthorizationError> {
     Ok(format!("{prefix}-{}", hex::encode(random)))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CancellationReason {
     Caller,
     OwnerLost,
@@ -153,7 +153,7 @@ impl Cancellation {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum AuthorizationOutcome {
     Authorized,
     Denied,

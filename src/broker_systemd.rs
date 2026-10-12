@@ -58,7 +58,7 @@ trait SystemdService {
 }
 
 /// A service completion value that preserves normal exits and signals without shell conventions.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum CommandOutcome {
     Exited(i32),
     Signaled(i32),
