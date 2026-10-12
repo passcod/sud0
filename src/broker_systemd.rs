@@ -440,8 +440,6 @@ pub enum LaunchError {
     StartupJob,
     #[error("invocation was cancelled")]
     Cancelled,
-    #[error("unit completion tracker stopped unexpectedly")]
-    TrackerLost,
 }
 
 #[cfg(test)]

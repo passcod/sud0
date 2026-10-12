@@ -99,11 +99,8 @@ impl InvocationStatusWire {
 
     fn terminal_phase(phase: u8, category: &str) -> Self {
         Self {
-            phase,
-            outcome: OUTCOME_NONE,
-            status: 0,
-            signal: 0,
             error_category: category.to_owned(),
+            ..Self::phase(phase)
         }
     }
 }

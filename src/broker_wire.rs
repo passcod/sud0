@@ -152,11 +152,11 @@ impl PreparedIo {
                 initial_size: size.validate()?,
             }),
             (IoMode::Pipe, StdioWire::PIPE_KIND, [_, _, _], None) => {
-                let mut descriptors = wire.descriptors.into_iter().map(OwnedFd::from);
+                let [stdin, stdout, stderr] = wire.descriptors.try_into().unwrap();
                 Ok(Self::Pipe {
-                    stdin: descriptors.next().expect("validated descriptor count"),
-                    stdout: descriptors.next().expect("validated descriptor count"),
-                    stderr: descriptors.next().expect("validated descriptor count"),
+                    stdin: stdin.into(),
+                    stdout: stdout.into(),
+                    stderr: stderr.into(),
                 })
             }
             _ => Err(PrepareError::IoModeMismatch),
