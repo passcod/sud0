@@ -28,10 +28,10 @@ name = "sud0-exec"
 path = "src/bin/sud0-exec.rs"
 
 [dependencies]
-clap = { version = "4.6.7", features = ["derive"] }
-futures-util = "0.3.34"
+clap = { version = "4.6.7", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
+futures-util = { version = "0.3.34", default-features = false }
 getrandom = "0.4.3"
-hex = "0.4.3"
+hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
 leon = { version = "3.0.3", default-features = false }
 libc = "0.2.190"
 nix = { version = "0.31.3", features = ["fs", "process", "signal", "socket", "term", "user"] }
@@ -40,7 +40,7 @@ rustix = { version = "1.1.5", features = ["termios"] }
 serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2.0.21"
 tokio = { version = "1.53.2", features = ["macros", "rt-multi-thread", "signal", "io-util", "process", "time", "sync"] }
-zbus = { version = "5.19.0", features = ["tokio"] }
+zbus = { version = "5.19.0", default-features = false, features = ["tokio"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
