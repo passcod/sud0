@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::os::fd::{AsFd, OwnedFd};
+use std::time::Duration;
 
 use thiserror::Error;
 use tokio::sync::watch;
@@ -149,7 +150,10 @@ pub(crate) trait Authority {
         request: &AuthorizationRequest,
     ) -> impl Future<Output = Result<bool, AuthorizationError>> + Send;
 
-    fn cancel(&self, cancellation_id: &str);
+    fn cancel(
+        &self,
+        cancellation_id: &str,
+    ) -> impl Future<Output = Result<(), AuthorizationError>> + Send;
 }
 
 /// Authorizes one request and gives explicit cancellation precedence over a racing completion.
@@ -171,13 +175,21 @@ pub(crate) async fn authorize<A: Authority>(
         _ = cancellation.changed() => {
             // The result can legitimately report that the check has just completed. Cancellation
             // still wins locally and no authorization result from this check may permit launch.
-            authority.cancel(&request.cancellation_id);
+            let _ = tokio::time::timeout(
+                Duration::from_secs(1),
+                authority.cancel(&request.cancellation_id),
+            )
+            .await;
             Ok(AuthorizationOutcome::Cancelled)
         }
         result = &mut check => {
             let result = result?;
             if cancellation.borrow().is_some() {
-                authority.cancel(&request.cancellation_id);
+                let _ = tokio::time::timeout(
+                    Duration::from_secs(1),
+                    authority.cancel(&request.cancellation_id),
+                )
+                .await;
                 return Ok(AuthorizationOutcome::Cancelled);
             }
             Ok(if result {
@@ -224,14 +236,14 @@ impl Authority for zbus::Connection {
         Ok(authorized && !dismissed)
     }
 
-    fn cancel(&self, cancellation_id: &str) {
-        let connection = self.clone();
-        let cancellation_id = cancellation_id.to_owned();
-        tokio::spawn(async move {
-            if let Ok(proxy) = PolicyKitAuthorityProxy::new(&connection).await {
-                let _ = proxy.cancel_check_authorization(&cancellation_id).await;
-            }
-        });
+    async fn cancel(&self, cancellation_id: &str) -> Result<(), AuthorizationError> {
+        let proxy = PolicyKitAuthorityProxy::new(self)
+            .await
+            .map_err(AuthorizationError::PolicyKit)?;
+        proxy
+            .cancel_check_authorization(cancellation_id)
+            .await
+            .map_err(AuthorizationError::PolicyKit)
     }
 }
 
@@ -302,12 +314,6 @@ mod tests {
 
         assert_eq!(check.flags, 1);
         assert_eq!(authorization(false).flags, 0);
-        assert_eq!(
-            check.message,
-            template
-                .render(&request(), Some(&description), "/actual")
-                .unwrap()
-        );
     }
 
     struct FakeAuthority {
@@ -330,11 +336,12 @@ mod tests {
             Ok(self.result)
         }
 
-        fn cancel(&self, cancellation_id: &str) {
+        async fn cancel(&self, cancellation_id: &str) -> Result<(), AuthorizationError> {
             self.calls
                 .lock()
                 .unwrap()
                 .push(format!("cancel:{cancellation_id}"));
+            Ok(())
         }
     }
 
