@@ -3,7 +3,6 @@ use std::os::fd::OwnedFd;
 use thiserror::Error;
 use zbus::zvariant::{Optional, OwnedFd as ZOwnedFd, Type};
 
-use crate::constants::MAX_ENCODED_REQUEST_BYTES;
 use crate::{
     DescriptionError, FrozenRequest, HumanDescription, IoMode, ProtocolError,
     WorkingDirectoryError, WorkingDirectoryFd,
@@ -85,12 +84,6 @@ pub struct PreparedRequest {
 
 impl PreparedRequest {
     pub fn from_wire(wire: RunWire) -> Result<Self, PrepareError> {
-        if wire.request.len() > MAX_ENCODED_REQUEST_BYTES {
-            return Err(PrepareError::RequestTooLarge {
-                actual: wire.request.len(),
-                maximum: MAX_ENCODED_REQUEST_BYTES,
-            });
-        }
         let request = FrozenRequest::decode(&wire.request)?;
         let description = Option::<String>::from(wire.description)
             .map(HumanDescription::new)
@@ -131,8 +124,8 @@ impl PreparedRequest {
         self.allow_interaction
     }
 
-    pub fn into_launch_parts(self) -> (FrozenRequest, WorkingDirectoryFd, PreparedIo, bool) {
-        (self.request, self.cwd, self.io, self.allow_interaction)
+    pub fn into_launch_parts(self) -> (FrozenRequest, WorkingDirectoryFd, PreparedIo) {
+        (self.request, self.cwd, self.io)
     }
 }
 
@@ -175,20 +168,11 @@ impl PreparedIo {
             _ => Err(PrepareError::IoModeMismatch),
         }
     }
-
-    pub const fn io_mode(&self) -> IoMode {
-        match self {
-            Self::Pty { .. } => IoMode::Pty,
-            Self::Pipe { .. } => IoMode::Pipe,
-        }
-    }
 }
 
 /// Failure to turn untrusted D-Bus values into broker-owned invariant-bearing state.
 #[derive(Debug, Error)]
 pub enum PrepareError {
-    #[error("encoded request has {actual} bytes; the maximum is {maximum}")]
-    RequestTooLarge { actual: usize, maximum: usize },
     #[error("invalid encoded request")]
     Request(#[source] ProtocolError),
     #[error("invalid presentation description")]

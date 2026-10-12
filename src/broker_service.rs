@@ -612,7 +612,7 @@ async fn run_pipeline(pipeline: RunPipeline) {
     }
 
     shared.update(InvocationStatusWire::phase(PHASE_STARTING));
-    let (request, cwd, io, _) = prepared.into_launch_parts();
+    let (request, cwd, io) = prepared.into_launch_parts();
     let started = match launcher
         .launch(
             LaunchRequest::new(request, cwd, io),
@@ -631,7 +631,10 @@ async fn run_pipeline(pipeline: RunPipeline) {
             return;
         }
     };
-    let (_unit_name, pty_master, completion) = started.into_parts();
+    let crate::StartedUnit {
+        pty_master,
+        completion,
+    } = started;
     if let Some(master) = pty_master {
         shared.install_pty(master);
     }

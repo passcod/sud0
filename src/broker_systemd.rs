@@ -220,29 +220,8 @@ fn transient_properties(prepared: &PreparedLaunch) -> Vec<(&'static str, Value<'
 /// until systemd reports the `Type=exec` start job as `done`.
 #[derive(Debug)]
 pub struct StartedUnit {
-    pub unit_name: String,
     pub pty_master: Option<OwnedFd>,
-    completion: oneshot::Receiver<Result<CommandOutcome, LaunchError>>,
-}
-
-impl StartedUnit {
-    pub fn into_parts(self) -> (String, Option<OwnedFd>, UnitCompletion) {
-        (
-            self.unit_name,
-            self.pty_master,
-            UnitCompletion {
-                receiver: self.completion,
-            },
-        )
-    }
-
-    pub async fn wait(self) -> Result<CommandOutcome, LaunchError> {
-        UnitCompletion {
-            receiver: self.completion,
-        }
-        .wait()
-        .await
-    }
+    pub completion: UnitCompletion,
 }
 
 #[derive(Debug)]
@@ -357,9 +336,10 @@ impl SystemdLauncher {
         });
 
         Ok(StartedUnit {
-            unit_name,
             pty_master,
-            completion,
+            completion: UnitCompletion {
+                receiver: completion,
+            },
         })
     }
 }
