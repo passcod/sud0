@@ -1,5 +1,4 @@
 use std::os::fd::{AsFd, OwnedFd};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -49,12 +48,7 @@ pub struct BrokerClient {
 
 pub struct Invocation {
     proxy: InvocationProxy<'static>,
-    cleanup_needed: Arc<AtomicBool>,
-}
-
-struct AgentAttempt {
-    agent: Option<AuthenticationAgent>,
-    error: Option<AuthenticationAgentError>,
+    cleanup_needed: AtomicBool,
 }
 
 pub enum Startup {
@@ -71,10 +65,10 @@ impl BrokerClient {
     pub async fn run(
         &self,
         prepared: PreparedClientRequest,
-        mode: IoMode,
         initial_size: Option<WindowSize>,
         allow_interaction: bool,
     ) -> Result<(Invocation, Startup), ClientError> {
+        let mode = prepared.request.io_mode();
         let stdio = match mode {
             IoMode::Pty => StdioWire::pty(),
             IoMode::Pipe => StdioWire::pipe(
@@ -97,48 +91,33 @@ impl BrokerClient {
             allow_interaction,
             window_size: Optional::from(initial_size),
         };
-        let mut agent = start_agent(allow_interaction).await;
-
-        let manager = match ManagerProxy::new(&self.connection).await {
-            Ok(manager) => manager,
-            Err(error) => {
-                stop_agent(agent.agent.take()).await;
-                return Err(ClientError::Proxy(error));
-            }
-        };
-        let path = match manager.run(wire).await {
-            Ok(path) => path,
-            Err(error) => {
-                stop_agent(agent.agent.take()).await;
-                return Err(ClientError::Broker(error));
-            }
-        };
-        let proxy = match InvocationProxy::builder(&self.connection)
-            .destination(BROKER_BUS_NAME)
-            .and_then(|builder| builder.path(path))
-        {
-            Ok(builder) => match builder.build().await {
-                Ok(proxy) => proxy,
-                Err(error) => {
-                    stop_agent(agent.agent.take()).await;
-                    return Err(ClientError::Proxy(error));
-                }
-            },
-            Err(error) => {
-                stop_agent(agent.agent.take()).await;
-                return Err(ClientError::Proxy(error));
-            }
-        };
-        let invocation = Invocation {
-            proxy,
-            cleanup_needed: Arc::new(AtomicBool::new(true)),
-        };
-        let startup = invocation.wait_for_startup().await;
-        stop_agent(agent.agent.take()).await;
+        let (agent, agent_error) = start_agent(allow_interaction).await;
+        let setup = async {
+            let manager = ManagerProxy::new(&self.connection)
+                .await
+                .map_err(ClientError::Proxy)?;
+            let path = manager.run(wire).await.map_err(ClientError::Broker)?;
+            let proxy = InvocationProxy::builder(&self.connection)
+                .destination(BROKER_BUS_NAME)
+                .and_then(|builder| builder.path(path))
+                .map_err(ClientError::Proxy)?
+                .build()
+                .await
+                .map_err(ClientError::Proxy)?;
+            let invocation = Invocation {
+                proxy,
+                cleanup_needed: AtomicBool::new(true),
+            };
+            let startup = invocation.wait_for_startup().await;
+            Ok::<_, ClientError>((invocation, startup))
+        }
+        .await;
+        stop_agent(agent).await;
+        let (invocation, startup) = setup?;
         match startup {
             Ok(Startup::Running) => Ok((invocation, Startup::Running)),
             Ok(Startup::Terminal(status)) => {
-                if let Some(error) = agent.error
+                if let Some(error) = agent_error
                     && status.phase == 4
                     && status.error_category == "authorization"
                 {
@@ -151,7 +130,8 @@ impl BrokerClient {
                 }
             }
             Err(error) => {
-                invocation.cancel_and_release().await;
+                invocation.cancel().await;
+                let _ = invocation.wait().await;
                 Err(error)
             }
         }
@@ -204,11 +184,6 @@ impl Invocation {
             .await
             .map_err(ClientError::Broker)
     }
-
-    pub async fn cancel_and_release(&self) {
-        self.cancel().await;
-        let _ = self.wait().await;
-    }
 }
 
 impl Drop for Invocation {
@@ -248,22 +223,18 @@ fn duplicate_cloexec(fd: impl AsFd) -> Result<OwnedFd, ClientError> {
     rustix::io::fcntl_dupfd_cloexec(fd, 3).map_err(ClientError::DuplicateStdio)
 }
 
-async fn start_agent(allow_interaction: bool) -> AgentAttempt {
+async fn start_agent(
+    allow_interaction: bool,
+) -> (
+    Option<AuthenticationAgent>,
+    Option<AuthenticationAgentError>,
+) {
     if !allow_interaction {
-        return AgentAttempt {
-            agent: None,
-            error: None,
-        };
+        return (None, None);
     }
     match AuthenticationAgent::start().await {
-        Ok(agent) => AgentAttempt {
-            agent: Some(agent),
-            error: None,
-        },
-        Err(error) => AgentAttempt {
-            agent: None,
-            error: Some(error),
-        },
+        Ok(agent) => (Some(agent), None),
+        Err(error) => (None, Some(error)),
     }
 }
 

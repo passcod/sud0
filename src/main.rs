@@ -77,7 +77,7 @@ async fn run(cli: Cli) -> Result<u8, AppError> {
         .transpose()?;
     let prepared = PreparedClientRequest::from_cli(&cli, mode)?;
     let (invocation, startup) = client
-        .run(prepared, mode, initial_size, allow_interaction)
+        .run(prepared, initial_size, allow_interaction)
         .await?;
     match startup {
         Startup::Terminal(_) => {
