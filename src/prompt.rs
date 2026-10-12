@@ -30,9 +30,7 @@ impl HumanDescription {
 }
 
 /// A validated root-owned Leon template for authentication messages.
-pub struct PromptTemplate {
-    source: String,
-}
+pub struct PromptTemplate(String);
 
 impl PromptTemplate {
     pub fn parse(source: String) -> Result<Self, PromptTemplateError> {
@@ -49,7 +47,7 @@ impl PromptTemplate {
         {
             return Err(PromptTemplateError::UnknownPlaceholder((*key).to_owned()));
         }
-        Ok(Self { source })
+        Ok(Self(source))
     }
 
     pub fn render(
@@ -83,11 +81,11 @@ impl PromptTemplate {
             ("description_line", description_line.as_str()),
             ("environment_line", environment_line.as_str()),
         ];
-        let template = leon::Template::parse(&self.source)
+        let template = leon::Template::parse(&self.0)
             .expect("validated prompt template must remain parseable");
         let rendered = template
             .render(&values)
-            .map_err(PromptTemplateError::Render)?;
+            .expect("all validated prompt keys have in-memory values");
         if rendered.len() > MAX_PROMPT_BYTES {
             return Err(PromptTemplateError::PromptTooLong {
                 actual: rendered.len(),
@@ -181,8 +179,6 @@ pub enum PromptTemplateError {
     Parse(leon::ParseError),
     #[error("prompt template uses unknown placeholder {0:?}")]
     UnknownPlaceholder(String),
-    #[error("failed to render prompt template: {0}")]
-    Render(leon::RenderError),
     #[error("rendered {field} has {actual} bytes; the maximum is {maximum}")]
     ValueTooLong {
         field: &'static str,
