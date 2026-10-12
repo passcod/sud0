@@ -1,4 +1,3 @@
-use std::ffi::CStr;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
 
 use nix::fcntl::{OFlag, open};
@@ -15,7 +14,7 @@ pub struct WorkingDirectoryFd {
 
 impl WorkingDirectoryFd {
     /// Opens a directory descriptor for transfer to the privileged executor.
-    pub fn open(path: &CStr) -> Result<Self, WorkingDirectoryError> {
+    pub fn open(path: &str) -> Result<Self, WorkingDirectoryError> {
         let fd = open(
             path,
             OFlag::O_PATH | OFlag::O_DIRECTORY | OFlag::O_CLOEXEC,
@@ -76,8 +75,6 @@ pub enum WorkingDirectoryError {
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::PermissionsExt;
 
     use super::*;
@@ -88,9 +85,7 @@ mod tests {
         let directory = parent.path().join("execute-only");
         std::fs::create_dir(&directory).unwrap();
         std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o111)).unwrap();
-        let path = std::ffi::CString::new(directory.as_os_str().as_bytes()).unwrap();
-
-        let opened = WorkingDirectoryFd::open(&path).unwrap();
+        let opened = WorkingDirectoryFd::open(directory.to_str().unwrap()).unwrap();
         assert!(fstat(opened.as_fd()).unwrap().st_mode & libc::S_IFMT == libc::S_IFDIR);
     }
 
@@ -100,8 +95,7 @@ mod tests {
         let original = parent.path().join("original");
         let renamed = parent.path().join("renamed");
         std::fs::create_dir(&original).unwrap();
-        let path = CString::new(original.as_os_str().as_bytes()).unwrap();
-        let directory = WorkingDirectoryFd::open(&path).unwrap();
+        let directory = WorkingDirectoryFd::open(original.to_str().unwrap()).unwrap();
         assert_eq!(
             directory.display_path().unwrap(),
             original.to_str().unwrap()

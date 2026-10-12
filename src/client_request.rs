@@ -1,5 +1,4 @@
 use std::env;
-use std::ffi::CString;
 use std::os::fd::{AsFd, BorrowedFd};
 
 use thiserror::Error;
@@ -15,8 +14,6 @@ pub struct PreparedClientRequest {
 
 #[derive(Debug, Error)]
 pub enum ClientRequestError {
-    #[error("working-directory path contains a NUL byte")]
-    WorkingDirectoryNul,
     #[error(transparent)]
     WorkingDirectory(#[from] WorkingDirectoryError),
     #[error("environment variable {name:?} is not present")]
@@ -89,9 +86,7 @@ fn parse_environment(values: &[String]) -> Result<Vec<(String, String)>, ClientR
 fn prepare_working_directory(
     requested: Option<&str>,
 ) -> Result<WorkingDirectoryFd, ClientRequestError> {
-    let path = CString::new(requested.unwrap_or("."))
-        .map_err(|_| ClientRequestError::WorkingDirectoryNul)?;
-    WorkingDirectoryFd::open(&path).map_err(Into::into)
+    WorkingDirectoryFd::open(requested.unwrap_or(".")).map_err(Into::into)
 }
 
 #[cfg(test)]
