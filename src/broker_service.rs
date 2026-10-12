@@ -191,6 +191,57 @@ impl SharedInvocation {
 #[derive(Debug)]
 struct AbortOnDrop(tokio::task::JoinHandle<()>);
 
+#[derive(Debug, Default)]
+struct PipelineState {
+    active: usize,
+    stopping: bool,
+}
+
+#[derive(Debug, Default)]
+struct PipelineRegistry {
+    state: Mutex<PipelineState>,
+    idle: Notify,
+}
+
+impl PipelineRegistry {
+    fn acquire(self: &Arc<Self>) -> Result<PipelinePermit, BrokerDbusError> {
+        let mut state = self.state.lock().unwrap();
+        if state.stopping {
+            return Err(BrokerDbusError::Failed(
+                "broker is shutting down".to_owned(),
+            ));
+        }
+        state.active += 1;
+        Ok(PipelinePermit(self.clone()))
+    }
+
+    async fn stop_and_wait(&self) {
+        self.state.lock().unwrap().stopping = true;
+        loop {
+            let notified = self.idle.notified();
+            if self.state.lock().unwrap().active == 0 {
+                return;
+            }
+            notified.await;
+        }
+    }
+}
+
+#[derive(Debug)]
+struct PipelinePermit(Arc<PipelineRegistry>);
+
+impl Drop for PipelinePermit {
+    fn drop(&mut self) {
+        let mut state = self.0.state.lock().unwrap();
+        state.active -= 1;
+        let idle = state.active == 0;
+        drop(state);
+        if idle {
+            self.0.idle.notify_waiters();
+        }
+    }
+}
+
 impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
@@ -367,6 +418,7 @@ pub struct BrokerManager {
     prompt_template: Arc<PromptTemplate>,
     limits: Arc<BrokerLimits>,
     shutdown: watch::Receiver<bool>,
+    pipelines: Arc<PipelineRegistry>,
 }
 
 impl BrokerManager {
@@ -382,7 +434,12 @@ impl BrokerManager {
             prompt_template: Arc::new(prompt_template),
             limits: Arc::new(BrokerLimits::default()),
             shutdown,
+            pipelines: Arc::new(PipelineRegistry::default()),
         }
+    }
+
+    pub async fn shutdown(&self) {
+        self.pipelines.stop_and_wait().await;
     }
 }
 
@@ -393,6 +450,7 @@ impl BrokerManager {
         wire: RunWire,
         #[zbus(header)] header: Header<'_>,
     ) -> Result<OwnedObjectPath, BrokerDbusError> {
+        let pipeline_permit = self.pipelines.acquire()?;
         let caller = authenticated_caller(&self.connection, &header).await?;
         let permit = self.limits.acquire_invocation(caller.sender())?;
         let prepared = PreparedRequest::from_wire(wire)
@@ -440,6 +498,7 @@ impl BrokerManager {
                 shared,
                 cancellation,
                 shutdown,
+                _permit: pipeline_permit,
             })
             .await;
         });
@@ -456,6 +515,7 @@ struct RunPipeline {
     shared: Arc<SharedInvocation>,
     cancellation: Cancellation,
     shutdown: watch::Receiver<bool>,
+    _permit: PipelinePermit,
 }
 
 async fn run_pipeline(pipeline: RunPipeline) {
@@ -468,10 +528,11 @@ async fn run_pipeline(pipeline: RunPipeline) {
         shared,
         cancellation,
         mut shutdown,
+        _permit,
     } = pipeline;
     let shutdown_cancellation = cancellation.clone();
     let _shutdown_monitor = AbortOnDrop(tokio::spawn(async move {
-        if shutdown.changed().await.is_ok() && *shutdown.borrow() {
+        if *shutdown.borrow() || shutdown.changed().await.is_ok() && *shutdown.borrow() {
             shutdown_cancellation.cancel(CancellationReason::Shutdown);
         }
     }));
@@ -851,6 +912,21 @@ mod tests {
         shared.owner_lost();
         assert_eq!(cancellation.reason(), Some(CancellationReason::OwnerLost));
         assert!(shared.state.lock().unwrap().pty_master.is_none());
+    }
+
+    #[tokio::test]
+    async fn shutdown_rejects_new_pipelines_and_waits_for_active_pipeline() {
+        let registry = Arc::new(PipelineRegistry::default());
+        let permit = registry.acquire().unwrap();
+        let shutdown = tokio::spawn({
+            let registry = registry.clone();
+            async move { registry.stop_and_wait().await }
+        });
+        tokio::task::yield_now().await;
+        assert!(registry.acquire().is_err());
+        assert!(!shutdown.is_finished());
+        drop(permit);
+        shutdown.await.unwrap();
     }
 
     #[test]

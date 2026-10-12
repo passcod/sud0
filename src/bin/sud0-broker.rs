@@ -27,17 +27,16 @@ async fn run() -> Result<(), BrokerError> {
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let connection = Builder::system()?.build().await?;
     let launcher = SystemdLauncher::new(connection.clone()).await?;
+    let manager = BrokerManager::new(connection.clone(), launcher, template, shutdown_rx);
     connection
         .object_server()
-        .at(
-            BROKER_MANAGER_PATH,
-            BrokerManager::new(connection.clone(), launcher, template, shutdown_rx),
-        )
+        .at(BROKER_MANAGER_PATH, manager.clone())
         .await?;
     connection.request_name(BROKER_BUS_NAME).await?;
 
     wait_for_shutdown().await?;
     let _ = shutdown_tx.send(true);
+    manager.shutdown().await;
     Ok(())
 }
 
