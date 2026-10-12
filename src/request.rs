@@ -93,14 +93,16 @@ fn validate_environment(
     }
 
     let mut seen = HashSet::with_capacity(environment.len());
-    let mut validated = Vec::with_capacity(environment.len());
-    for (index, (name, value)) in environment.into_iter().enumerate() {
-        validate_environment_name(index, &name)?;
-        if is_protected_environment_name(&name) {
-            return Err(RequestError::ProtectedEnvironmentName { index, name });
+    for (index, (name, value)) in environment.iter().enumerate() {
+        validate_environment_name(index, name)?;
+        if is_protected_environment_name(name) {
+            return Err(RequestError::ProtectedEnvironmentName {
+                index,
+                name: name.clone(),
+            });
         }
-        if !seen.insert(name.clone()) {
-            return Err(RequestError::DuplicateEnvironmentName { name });
+        if !seen.insert(name.as_str()) {
+            return Err(RequestError::DuplicateEnvironmentName { name: name.clone() });
         }
         if value.len() > MAX_ENVIRONMENT_VALUE_BYTES {
             return Err(RequestError::EnvironmentValueTooLong {
@@ -109,10 +111,9 @@ fn validate_environment(
                 maximum: MAX_ENVIRONMENT_VALUE_BYTES,
             });
         }
-        reject_nul(&value, "environment variable value")?;
-        validated.push((name, value));
+        reject_nul(value, "environment variable value")?;
     }
-    Ok(validated)
+    Ok(environment)
 }
 
 fn validate_environment_name(index: usize, name: &str) -> Result<(), RequestError> {
