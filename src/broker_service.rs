@@ -598,16 +598,6 @@ async fn run_pipeline(pipeline: RunPipeline) {
         }
     }));
 
-    let cwd_identity = match prepared.cwd().identity() {
-        Ok(identity) => identity,
-        Err(_) => {
-            shared.update(InvocationStatusWire::terminal_phase(
-                PHASE_FAILED,
-                "authorization-setup",
-            ));
-            return;
-        }
-    };
     let cwd_path = match prepared.cwd().display_path() {
         Ok(path) => path,
         Err(_) => {
@@ -624,7 +614,6 @@ async fn run_pipeline(pipeline: RunPipeline) {
         prepared.request(),
         prepared.description(),
         &cwd_path,
-        cwd_identity,
         prepared.allow_interaction(),
     ) {
         Ok(request) => request,

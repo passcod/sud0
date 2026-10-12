@@ -161,14 +161,13 @@ mod tests {
     use std::os::fd::AsRawFd;
 
     use super::*;
-    use crate::{IoMode, RequestOptions};
+    use crate::IoMode;
 
     fn request() -> FrozenRequest {
         FrozenRequest::new(
-            vec![b"/usr/bin/printf".to_vec(), vec![0xff, b'x']],
-            Some(vec![b'/', b't', b'm', b'p', b'/', 0xfe]),
-            vec![(b"TERM".to_vec(), b"xterm-256color".to_vec())],
-            RequestOptions::for_io_mode(IoMode::Pipe),
+            vec!["/usr/bin/printf".to_owned(), "héllo".to_owned()],
+            vec![("TERM".to_owned(), "xterm-256color".to_owned())],
+            IoMode::Pipe,
         )
         .unwrap()
     }

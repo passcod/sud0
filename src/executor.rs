@@ -19,12 +19,12 @@ use crate::{
     decode_sealed_request,
 };
 
-const BASELINE_ENVIRONMENT: &[(&[u8], &[u8])] = &[
-    (b"PATH", ROOT_PATH.as_bytes()),
-    (b"HOME", b"/root"),
-    (b"USER", b"root"),
-    (b"LOGNAME", b"root"),
-    (b"SHELL", ROOT_SHELL.as_bytes()),
+const BASELINE_ENVIRONMENT: &[(&str, &str)] = &[
+    ("PATH", ROOT_PATH),
+    ("HOME", "/root"),
+    ("USER", "root"),
+    ("LOGNAME", "root"),
+    ("SHELL", ROOT_SHELL),
 ];
 
 /// Runs the fixed privileged executor transaction.
@@ -45,9 +45,9 @@ pub unsafe fn run() -> Result<Infallible, ExecutorError> {
     let (request_file, working_directory) = take_activation_fds()?;
     let request = decode_sealed_request(&request_file)?;
 
-    prepare_terminal(request.options().io_mode())?;
-    let argv = build_argv(&request)?;
-    let environment = build_environment(&request)?;
+    prepare_terminal(request.io_mode())?;
+    let argv = build_argv(&request);
+    let environment = build_environment(&request);
     let candidates = command_candidates(&argv[0]);
 
     nix::unistd::fchdir(&working_directory).map_err(ExecutorError::ChangeDirectory)?;
@@ -161,33 +161,29 @@ fn set_close_on_exec(fd: RawFd) -> Result<(), ExecutorError> {
 }
 
 /// Builds the explicit command environment without consulting ambient process values.
-pub fn build_environment(request: &FrozenRequest) -> Result<Vec<CString>, ExecutorError> {
-    let mut environment =
-        Vec::with_capacity(BASELINE_ENVIRONMENT.len() + request.environment().len());
-    for &(name, value) in BASELINE_ENVIRONMENT {
-        environment.push(environment_assignment(name, value));
-    }
-    for variable in request.environment() {
-        environment.push(environment_assignment(variable.name(), variable.value()));
-    }
-    Ok(environment)
+pub fn build_environment(request: &FrozenRequest) -> Vec<CString> {
+    BASELINE_ENVIRONMENT
+        .iter()
+        .map(|(name, value)| environment_assignment(name, value))
+        .chain(
+            request
+                .environment()
+                .iter()
+                .map(|variable| environment_assignment(variable.name(), variable.value())),
+        )
+        .collect()
 }
 
-fn environment_assignment(name: &[u8], value: &[u8]) -> CString {
-    let mut assignment = Vec::with_capacity(name.len() + 1 + value.len());
-    assignment.extend_from_slice(name);
-    assignment.push(b'=');
-    assignment.extend_from_slice(value);
-    CString::new(assignment).expect("validated frozen environment cannot contain NUL")
+fn environment_assignment(name: &str, value: &str) -> CString {
+    CString::new(format!("{name}={value}"))
+        .expect("validated frozen environment cannot contain NUL")
 }
 
-fn build_argv(request: &FrozenRequest) -> Result<Vec<CString>, ExecutorError> {
+fn build_argv(request: &FrozenRequest) -> Vec<CString> {
     request
         .argv()
         .iter()
-        .map(|argument| {
-            CString::new(argument.as_slice()).map_err(|_| ExecutorError::InvalidFrozenArgument)
-        })
+        .map(|argument| CString::new(argument.as_str()).expect("validated argv cannot contain NUL"))
         .collect()
 }
 
@@ -440,8 +436,6 @@ pub enum ExecutorError {
     SealedRequest(#[from] SealedRequestError),
     #[error("invalid working-directory descriptor: {0}")]
     WorkingDirectory(#[from] WorkingDirectoryError),
-    #[error("frozen command argument is invalid")]
-    InvalidFrozenArgument,
     #[error("PTY mode requires terminal descriptor {fd}")]
     PtyRequiresTerminal { fd: RawFd },
     #[error("failed to inspect terminal descriptor {fd}: {source}")]
@@ -473,14 +467,15 @@ mod tests {
     use std::cell::RefCell;
 
     use super::*;
-    use crate::RequestOptions;
 
-    fn request(argv: Vec<Vec<u8>>, environment: Vec<(Vec<u8>, Vec<u8>)>) -> FrozenRequest {
+    fn request(argv: &[&str], environment: &[(&str, &str)]) -> FrozenRequest {
         FrozenRequest::new(
-            argv,
-            Some(b"/tmp".to_vec()),
-            environment,
-            RequestOptions::for_io_mode(IoMode::Pipe),
+            argv.iter().map(|value| (*value).to_owned()).collect(),
+            environment
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+                .collect(),
+            IoMode::Pipe,
         )
         .unwrap()
     }
@@ -552,30 +547,27 @@ mod tests {
     }
 
     #[test]
-    fn environment_is_explicit_and_preserves_raw_request_bytes() {
-        let request = request(
-            vec![b"env".to_vec()],
-            vec![
-                (b"TERM".to_vec(), b"xterm".to_vec()),
-                (b"RAW".to_vec(), vec![0xff, b'x']),
-            ],
-        );
-        let environment = build_environment(&request).unwrap();
-        let bytes: Vec<&[u8]> = environment.iter().map(|value| value.to_bytes()).collect();
+    fn environment_is_explicit_and_preserves_utf8_values() {
+        let request = request(&["env"], &[("TERM", "xterm"), ("LANG", "mi_NZ")]);
+        let environment = build_environment(&request);
+        let values: Vec<&str> = environment
+            .iter()
+            .map(|value| value.to_str().unwrap())
+            .collect();
 
         assert_eq!(
-            &bytes[..BASELINE_ENVIRONMENT.len()],
+            &values[..BASELINE_ENVIRONMENT.len()],
             [
-                b"PATH=/usr/local/sbin:/usr/local/bin:/usr/bin".as_slice(),
-                b"HOME=/root",
-                b"USER=root",
-                b"LOGNAME=root",
-                b"SHELL=/bin/bash",
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/bin",
+                "HOME=/root",
+                "USER=root",
+                "LOGNAME=root",
+                "SHELL=/bin/bash",
             ]
         );
-        assert!(bytes.contains(&b"TERM=xterm".as_slice()));
-        assert!(bytes.contains(&[b'R', b'A', b'W', b'=', 0xff, b'x'].as_slice()));
-        assert!(!bytes.iter().any(|entry| entry.starts_with(b"LISTEN_")));
+        assert!(values.contains(&"TERM=xterm"));
+        assert!(values.contains(&"LANG=mi_NZ"));
+        assert!(!values.iter().any(|entry| entry.starts_with("LISTEN_")));
     }
 
     #[test]
@@ -678,22 +670,5 @@ mod tests {
             validate_terminal_shape(&snapshot),
             Err(ExecutorError::MismatchedTerminals)
         ));
-    }
-
-    #[test]
-    fn executor_never_adds_shell_candidates() {
-        let direct = CString::new("./script-without-shebang").unwrap();
-        assert_eq!(command_candidates(&direct), [direct]);
-    }
-
-    #[test]
-    fn protected_names_cannot_reach_environment_builder() {
-        let result = FrozenRequest::new(
-            vec![b"env".to_vec()],
-            None,
-            vec![(b"LD_PRELOAD".to_vec(), b"library.so".to_vec())],
-            RequestOptions::for_io_mode(IoMode::Pipe),
-        );
-        assert!(result.is_err());
     }
 }

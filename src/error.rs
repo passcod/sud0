@@ -17,12 +17,6 @@ pub enum RequestError {
     },
     #[error("{field} contains a NUL byte")]
     EmbeddedNul { field: &'static str },
-    #[error("working directory must not be empty")]
-    EmptyWorkingDirectory,
-    #[error("working directory must be an absolute path")]
-    RelativeWorkingDirectory,
-    #[error("working directory has {actual} bytes; the maximum is {maximum}")]
-    WorkingDirectoryTooLong { actual: usize, maximum: usize },
     #[error("request has {actual} environment variables; the maximum is {maximum}")]
     TooManyEnvironmentVariables { actual: usize, maximum: usize },
     #[error("environment variable {index} has an empty name")]
@@ -40,9 +34,9 @@ pub enum RequestError {
         byte: u8,
     },
     #[error("environment variable name {name:?} occurs more than once")]
-    DuplicateEnvironmentName { name: Vec<u8> },
+    DuplicateEnvironmentName { name: String },
     #[error("environment variable {index} uses protected name {name:?}")]
-    ProtectedEnvironmentName { index: usize, name: Vec<u8> },
+    ProtectedEnvironmentName { index: usize, name: String },
     #[error("environment variable {index} value has {actual} bytes; the maximum is {maximum}")]
     EnvironmentValueTooLong {
         index: usize,
@@ -58,28 +52,18 @@ pub enum RequestError {
 }
 
 /// Encoding or decoding a frozen request failed.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Error)]
 pub enum ProtocolError {
     #[error("encoded request has {actual} bytes; the maximum is {maximum}")]
     EncodedRequestTooLarge { actual: usize, maximum: usize },
-    #[error("integer overflow while calculating the encoded request length")]
-    LengthOverflow,
-    #[error("length {length} cannot be represented by the wire format")]
-    LengthNotRepresentable { length: usize },
-    #[error("request is truncated while reading {field}")]
-    Truncated { field: &'static str },
-    #[error("request has invalid protocol magic")]
-    InvalidMagic,
-    #[error("protocol version {version} is not supported")]
-    UnsupportedVersion { version: u16 },
-    #[error("declared payload length {declared} does not match the {actual} available bytes")]
-    InvalidPayloadLength { declared: usize, actual: usize },
-    #[error("request has trailing payload bytes")]
-    TrailingPayload,
-    #[error("request payload is not in canonical form")]
-    NonCanonicalPayload,
-    #[error("request digest does not match its payload")]
-    DigestMismatch,
+    #[error("failed to encode request: {0}")]
+    Encode(postcard::Error),
+    #[error("failed to decode request: {0}")]
+    Decode(postcard::Error),
+    #[error("request has trailing data")]
+    TrailingData,
+    #[error("request protocol version {0} is not supported")]
+    UnsupportedVersion(u8),
     #[error(transparent)]
     InvalidRequest(#[from] RequestError),
 }

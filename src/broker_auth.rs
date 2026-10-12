@@ -7,10 +7,7 @@ use tokio::sync::watch;
 use zbus::zvariant::{Fd, Value};
 
 use crate::constants::POLKIT_RUN_ACTION;
-use crate::{
-    FrozenRequest, HumanDescription, PromptTemplate, PromptTemplateError, WorkingDirectoryIdentity,
-    format_prompt,
-};
+use crate::{FrozenRequest, HumanDescription, PromptTemplate, PromptTemplateError};
 
 const POLKIT_ALLOW_USER_INTERACTION: u32 = 1;
 
@@ -95,8 +92,7 @@ impl AuthorizationRequest {
         template: &PromptTemplate,
         request: &FrozenRequest,
         description: Option<&HumanDescription>,
-        cwd_path: &[u8],
-        cwd_identity: WorkingDirectoryIdentity,
+        cwd_path: &str,
         allow_interaction: bool,
     ) -> Result<Self, AuthorizationError> {
         Ok(Self {
@@ -108,7 +104,7 @@ impl AuthorizationRequest {
                 .try_clone_to_owned()
                 .map_err(AuthorizationError::DuplicatePidfd)?,
             action_id: POLKIT_RUN_ACTION,
-            message: format_prompt(template, request, description, cwd_path, cwd_identity)?,
+            message: template.render(request, description, cwd_path)?,
             flags: u32::from(allow_interaction) * POLKIT_ALLOW_USER_INTERACTION,
             cancellation_id: random_identifier("sud0-auth")?,
         })
@@ -352,7 +348,7 @@ mod tests {
     use tokio::sync::Notify;
 
     use super::*;
-    use crate::{IoMode, RequestOptions};
+    use crate::IoMode;
 
     fn caller() -> CallerIdentity {
         let pid = std::process::id();
@@ -368,10 +364,9 @@ mod tests {
 
     fn request() -> FrozenRequest {
         FrozenRequest::new(
-            vec![b"/usr/bin/printf".to_vec(), b"secret\n".to_vec()],
-            Some(b"/tmp".to_vec()),
+            vec!["/usr/bin/printf".to_owned(), "secret\n".to_owned()],
             Vec::new(),
-            RequestOptions::for_io_mode(IoMode::Pipe),
+            IoMode::Pipe,
         )
         .unwrap()
     }
@@ -379,15 +374,14 @@ mod tests {
     #[test]
     fn run_request_has_exact_broker_derived_policy_fields() {
         let description = HumanDescription::new("disk maintenance").unwrap();
-        let cwd_identity = WorkingDirectoryIdentity::new_for_test(7, 11);
-        let template = PromptTemplate::parse("{description}|{command}|{cwd}".to_owned()).unwrap();
+        let template =
+            PromptTemplate::parse("{description_line}|{command}|{cwd}".to_owned()).unwrap();
         let check = AuthorizationRequest::for_run(
             &caller(),
             &template,
             &request(),
             Some(&description),
-            b"/actual",
-            cwd_identity,
+            "/actual",
             true,
         )
         .unwrap();
@@ -398,14 +392,9 @@ mod tests {
         assert_eq!(check.flags(), 1);
         assert_eq!(
             check.message(),
-            format_prompt(
-                &template,
-                &request(),
-                Some(&description),
-                b"/actual",
-                cwd_identity,
-            )
-            .unwrap()
+            template
+                .render(&request(), Some(&description), "/actual")
+                .unwrap()
         );
         assert!(!check.cancellation_id().is_empty());
     }

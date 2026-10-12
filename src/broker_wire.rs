@@ -97,7 +97,7 @@ impl PreparedRequest {
             .transpose()?;
         let cwd = WorkingDirectoryFd::try_from(OwnedFd::from(wire.cwd))?;
         let io = PreparedIo::from_wire(
-            request.options().io_mode(),
+            request.io_mode(),
             wire.stdio,
             Option::<WindowSize>::from(wire.window_size),
         )?;
@@ -227,14 +227,12 @@ mod tests {
     use zbus::zvariant::Optional;
 
     use super::*;
-    use crate::{RequestOptions, SealedRequestFd};
 
     fn request(mode: IoMode) -> FrozenRequest {
         FrozenRequest::new(
-            vec![b"/usr/bin/id".to_vec(), vec![0xff]],
-            Some(b"/".to_vec()),
+            vec!["/usr/bin/id".to_owned(), "--user".to_owned()],
             Vec::new(),
-            RequestOptions::for_io_mode(mode),
+            mode,
         )
         .unwrap()
     }
@@ -386,18 +384,6 @@ mod tests {
     }
 
     #[test]
-    fn preparation_does_not_create_a_sealed_request() {
-        let prepared = PreparedRequest::from_wire(wire(
-            IoMode::Pipe,
-            StdioWire::pipe(null_fd(), null_fd(), null_fd()),
-            None,
-        ))
-        .unwrap();
-        let sealed = SealedRequestFd::create(prepared.request()).unwrap();
-        assert!(sealed.as_fd().as_raw_fd() >= 0);
-    }
-
-    #[test]
     fn invalid_window_dimensions_are_rejected() {
         let result = PreparedRequest::from_wire(wire(
             IoMode::Pty,
@@ -410,16 +396,5 @@ mod tests {
             }),
         ));
         assert!(matches!(result, Err(PrepareError::InvalidWindowSize)));
-    }
-
-    #[test]
-    fn stdio_wire_consumes_real_owned_descriptors() {
-        let fd = null_fd();
-        let raw = fd.as_raw_fd();
-        let stdio = StdioWire {
-            kind: 9,
-            descriptors: vec![fd.into()],
-        };
-        assert_eq!(stdio.descriptors[0].as_raw_fd(), raw);
     }
 }

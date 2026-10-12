@@ -1,7 +1,5 @@
-use std::ffi::{CStr, CString};
-use std::mem::MaybeUninit;
+use std::ffi::CStr;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
-use std::os::unix::ffi::OsStringExt;
 
 use nix::fcntl::{OFlag, open};
 use nix::sys::stat::{Mode, SFlag, fstat};
@@ -33,67 +31,19 @@ impl WorkingDirectoryFd {
         self.fd.as_fd()
     }
 
-    /// Returns kernel-derived identity for this exact directory object.
-    pub fn identity(&self) -> Result<WorkingDirectoryIdentity, WorkingDirectoryError> {
-        let mut metadata = MaybeUninit::<libc::statx>::zeroed();
-        // SAFETY: `metadata` points to writable storage for `statx`; an empty pathname plus
-        // `AT_EMPTY_PATH` asks the kernel to inspect the valid borrowed directory descriptor.
-        let result = unsafe {
-            libc::statx(
-                self.fd.as_raw_fd(),
-                c"".as_ptr(),
-                libc::AT_EMPTY_PATH | libc::AT_NO_AUTOMOUNT,
-                libc::STATX_TYPE | libc::STATX_INO | libc::STATX_MNT_ID,
-                metadata.as_mut_ptr(),
-            )
-        };
-        if result == -1 {
-            return Err(WorkingDirectoryError::Identity(
-                std::io::Error::last_os_error(),
-            ));
-        }
-        // SAFETY: successful `statx` initialized the output structure.
-        let metadata = unsafe { metadata.assume_init() };
-        Ok(WorkingDirectoryIdentity {
-            mount_id: metadata.stx_mnt_id,
-            inode: metadata.stx_ino,
-        })
-    }
-
-    /// Returns the kernel's current pathname for this exact opened directory object.
-    pub fn display_path(&self) -> Result<Vec<u8>, WorkingDirectoryError> {
+    /// Returns the kernel's current UTF-8 pathname for this exact opened directory object.
+    pub fn display_path(&self) -> Result<String, WorkingDirectoryError> {
         let link = format!("/proc/self/fd/{}", self.fd.as_raw_fd());
-        let path = std::fs::read_link(link).map_err(WorkingDirectoryError::DisplayPath)?;
-        let bytes = path.into_os_string().into_vec();
-        CString::new(bytes.clone()).map_err(|_| WorkingDirectoryError::DisplayPathNul)?;
-        Ok(bytes)
+        std::fs::read_link(link)
+            .map_err(WorkingDirectoryError::DisplayPath)?
+            .into_os_string()
+            .into_string()
+            .map_err(|_| WorkingDirectoryError::DisplayPathNotUtf8)
     }
 
     /// Transfers ownership while preserving the verified directory-object identity.
     pub fn into_owned_fd(self) -> OwnedFd {
         self.fd
-    }
-}
-
-/// Kernel-derived identity for an opened working directory.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WorkingDirectoryIdentity {
-    mount_id: u64,
-    inode: u64,
-}
-
-impl WorkingDirectoryIdentity {
-    #[cfg(test)]
-    pub(crate) const fn new_for_test(mount_id: u64, inode: u64) -> Self {
-        Self { mount_id, inode }
-    }
-
-    pub const fn mount_id(self) -> u64 {
-        self.mount_id
-    }
-
-    pub const fn inode(self) -> u64 {
-        self.inode
     }
 }
 
@@ -122,18 +72,17 @@ pub enum WorkingDirectoryError {
     Open(nix::errno::Errno),
     #[error("failed to inspect working-directory descriptor: {0}")]
     Stat(nix::errno::Errno),
-    #[error("failed to identify working-directory descriptor: {0}")]
-    Identity(std::io::Error),
     #[error("failed to obtain working-directory display path: {0}")]
     DisplayPath(std::io::Error),
-    #[error("working-directory display path contains a NUL byte")]
-    DisplayPathNul,
+    #[error("working-directory display path is not valid UTF-8")]
+    DisplayPathNotUtf8,
     #[error("working-directory descriptor does not refer to a directory")]
     NotDirectory,
 }
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::CString;
     use std::fs::File;
     use std::os::fd::OwnedFd;
     use std::os::unix::ffi::OsStrExt;
@@ -172,19 +121,7 @@ mod tests {
         std::fs::create_dir(&directory).unwrap();
         let path = CString::new(directory.as_os_str().as_bytes()).unwrap();
         let opened = WorkingDirectoryFd::open(&path).unwrap();
-        assert_eq!(
-            opened.display_path().unwrap(),
-            directory.as_os_str().as_bytes()
-        );
-    }
-
-    #[test]
-    fn identity_is_stable_for_the_same_directory_object() {
-        let directory =
-            WorkingDirectoryFd::try_from(OwnedFd::from(File::open("/").unwrap())).unwrap();
-        let identity = directory.identity().unwrap();
-        assert_ne!(identity.inode(), 0);
-        assert_eq!(directory.identity().unwrap(), identity);
+        assert_eq!(opened.display_path().unwrap(), directory.to_str().unwrap());
     }
 
     #[test]

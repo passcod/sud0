@@ -513,16 +513,10 @@ mod tests {
     use std::os::fd::AsRawFd;
 
     use super::*;
-    use crate::{IoMode, RequestOptions};
+    use crate::IoMode;
 
     fn request(mode: IoMode) -> FrozenRequest {
-        FrozenRequest::new(
-            vec![b"/usr/bin/true".to_vec()],
-            Some(b"/".to_vec()),
-            Vec::new(),
-            RequestOptions::for_io_mode(mode),
-        )
-        .unwrap()
+        FrozenRequest::new(vec!["/usr/bin/true".to_owned()], Vec::new(), mode).unwrap()
     }
 
     fn cwd() -> WorkingDirectoryFd {
