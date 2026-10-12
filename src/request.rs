@@ -33,7 +33,7 @@ impl FrozenRequest {
         io_mode: IoMode,
     ) -> Result<Self, RequestError> {
         validate_argv(&argv)?;
-        let environment = validate_environment(environment)?;
+        validate_environment(&environment)?;
         validate_total_size(&argv, &environment)?;
         Ok(Self {
             argv,
@@ -82,9 +82,7 @@ fn validate_argv(argv: &[String]) -> Result<(), RequestError> {
     Ok(())
 }
 
-fn validate_environment(
-    environment: Vec<(String, String)>,
-) -> Result<Vec<(String, String)>, RequestError> {
+fn validate_environment(environment: &[(String, String)]) -> Result<(), RequestError> {
     if environment.len() > MAX_ENVIRONMENT_VARIABLES {
         return Err(RequestError::TooManyEnvironmentVariables {
             actual: environment.len(),
@@ -113,7 +111,7 @@ fn validate_environment(
         }
         reject_nul(value, "environment variable value")?;
     }
-    Ok(environment)
+    Ok(())
 }
 
 fn validate_environment_name(index: usize, name: &str) -> Result<(), RequestError> {
