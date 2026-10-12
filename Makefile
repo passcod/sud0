@@ -3,7 +3,6 @@
 CARGO ?= cargo
 INSTALL ?= install
 PREFIX ?= /usr
-DESTDIR ?=
 
 BINDIR := $(DESTDIR)$(PREFIX)/bin
 LIBEXECDIR := $(DESTDIR)$(PREFIX)/lib/sud0

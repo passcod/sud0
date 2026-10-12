@@ -5,27 +5,9 @@ edition = "2024"
 description = "Run0 but friendlier"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/passcod/sud0"
-homepage = "https://github.com/passcod/sud0"
-readme = "README.md"
 rust-version = "1.89"
 publish = false
 default-run = "sud0"
-
-[lib]
-name = "sud0"
-path = "src/lib.rs"
-
-[[bin]]
-name = "sud0"
-path = "src/main.rs"
-
-[[bin]]
-name = "sud0-broker"
-path = "src/bin/sud0-broker.rs"
-
-[[bin]]
-name = "sud0-exec"
-path = "src/bin/sud0-exec.rs"
 
 [dependencies]
 clap = { version = "4.6.7", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
@@ -39,7 +21,7 @@ postcard = { version = "1.1.3", default-features = false, features = ["alloc"] }
 rustix = { version = "1.1.5", features = ["process", "termios"] }
 serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2.0.21"
-tokio = { version = "1.53.2", features = ["macros", "rt-multi-thread", "signal", "io-util", "process", "time", "sync"] }
+tokio = { version = "1.53.2", features = ["macros", "rt-multi-thread", "signal", "process", "time", "sync"] }
 zbus = { version = "5.19.0", default-features = false, features = ["tokio"] }
 
 [dev-dependencies]
