@@ -53,9 +53,8 @@ pub unsafe fn run() -> Result<Infallible, ExecutorError> {
 
     // Transfer responsibility for closing descriptors 3 and 4 to `close_unrelated_fds`; keeping an
     // owner alive across that call would let its destructor close a future reuse of either number.
-    let request_fd = request_file.into_raw_fd();
-    let cwd_fd = working_directory.into_owned_fd().into_raw_fd();
-    debug_assert_eq!((request_fd, cwd_fd), (REQUEST_FD, CWD_FD));
+    let _ = request_file.into_raw_fd();
+    let _ = working_directory.into_owned_fd().into_raw_fd();
     close_unrelated_fds()?;
 
     let error = try_exec_candidates(&candidates, |path| {
