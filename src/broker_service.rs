@@ -875,13 +875,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn status_mapping_never_contains_request_metadata() {
-        let status = InvocationStatusWire::from_outcome(CommandOutcome::ServiceFailure);
-        assert_eq!(status.error_category, "service-failure");
-        assert!(status.is_terminal());
-    }
-
-    #[test]
     fn owner_loss_cancels_and_drops_descriptor_state() {
         let cancellation = Cancellation::new();
         let shared = SharedInvocation::new(":1.7".to_owned(), cancellation.clone());

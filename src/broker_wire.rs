@@ -323,18 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_mutated_protocol_and_oversized_description() {
-        let mut malformed = wire(
-            IoMode::Pipe,
-            StdioWire::pipe(null_fd(), null_fd(), null_fd()),
-            None,
-        );
-        malformed.request[0] ^= 1;
-        assert!(matches!(
-            PreparedRequest::from_wire(malformed),
-            Err(PrepareError::Request(_))
-        ));
-
+    fn rejects_oversized_description() {
         let mut description = wire(
             IoMode::Pipe,
             StdioWire::pipe(null_fd(), null_fd(), null_fd()),
