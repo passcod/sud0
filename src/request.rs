@@ -19,7 +19,7 @@ pub enum IoMode {
 /// An immutable, validated execution request.
 ///
 /// Presentation-only data and the descriptor-backed working directory are deliberately absent.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FrozenRequest {
     argv: Vec<String>,
     environment: Vec<(String, String)>,

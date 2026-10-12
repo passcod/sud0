@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 /// A request violates a structural or resource limit.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum RequestError {
     #[error("a request must contain at least one command argument")]
     EmptyArgv,
@@ -65,7 +65,7 @@ pub enum ProtocolError {
 }
 
 /// A human description exceeds its independent input bound.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum DescriptionError {
     #[error("description has {actual} bytes; the maximum is {maximum}")]
     TooLong { actual: usize, maximum: usize },

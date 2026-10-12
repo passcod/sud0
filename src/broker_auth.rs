@@ -226,7 +226,7 @@ pub(crate) async fn authorize<A: Authority>(
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct ZbusAuthority {
     connection: zbus::Connection,
 }
