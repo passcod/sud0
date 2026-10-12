@@ -175,11 +175,7 @@ pub(crate) async fn authorize<A: Authority>(
         _ = cancellation.changed() => {
             // The result can legitimately report that the check has just completed. Cancellation
             // still wins locally and no authorization result from this check may permit launch.
-            let _ = tokio::time::timeout(
-                Duration::from_secs(1),
-                authority.cancel(&request.cancellation_id),
-            )
-            .await;
+            cancel_check(authority, request).await;
             Ok(AuthorizationOutcome::Cancelled)
         }
         result = &mut check => {
@@ -199,6 +195,14 @@ pub(crate) async fn authorize<A: Authority>(
             })
         }
     }
+}
+
+async fn cancel_check<A: Authority>(authority: &A, request: &AuthorizationRequest) {
+    let _ = tokio::time::timeout(
+        Duration::from_secs(1),
+        authority.cancel(&request.cancellation_id),
+    )
+    .await;
 }
 
 impl Authority for zbus::Connection {
