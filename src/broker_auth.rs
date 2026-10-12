@@ -34,7 +34,6 @@ trait PolicyKitAuthority {
 ///
 /// The constructor is crate-private so only the D-Bus boundary can create this value from the
 /// message header and `GetConnectionCredentials` result.
-#[derive(Debug)]
 pub struct CallerIdentity {
     sender: String,
     unix_uid: u32,
@@ -75,7 +74,6 @@ impl CallerIdentity {
 }
 
 /// Fully broker-derived authorization request.
-#[derive(Debug)]
 pub struct AuthorizationRequest {
     message: String,
     flags: u32,
@@ -212,7 +210,6 @@ pub(crate) async fn authorize<A: Authority>(
     }
 }
 
-#[derive(Debug)]
 pub(crate) struct ZbusAuthority {
     connection: zbus::Connection,
 }

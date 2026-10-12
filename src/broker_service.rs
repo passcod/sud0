@@ -399,7 +399,7 @@ impl BrokerLimits {
 }
 
 /// Public broker manager registered at the stable service path.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BrokerManager {
     connection: Connection,
     launcher: SystemdLauncher,
