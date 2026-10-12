@@ -1,14 +1,7 @@
 # Security policy
 
-## Supported versions
-
-Security fixes are provided for the latest released version and the current default branch.
-Pre-release snapshots may change their D-Bus and frozen-request formats without compatibility guarantees.
-
-## Reporting a vulnerability
-
-Please use the repository's [private vulnerability reporting form](https://github.com/passcod/sud0/security/advisories/new) rather than a public issue.
-Include the affected version or commit, expected security boundary, reproduction details, and impact where possible.
+Report vulnerabilities against the public issue tracker.
+You are encouraged to fix issues yourself if you care.
 
 ## Threat model and trusted computing base
 
