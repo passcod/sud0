@@ -87,7 +87,7 @@ fn validate_process_activation_environment() -> Result<(), ExecutorError> {
 }
 
 /// Strictly validates the three raw systemd descriptor-activation values.
-pub fn validate_activation_environment(
+fn validate_activation_environment(
     current_pid: libc::pid_t,
     listen_pid: Option<&[u8]>,
     listen_fds: Option<&[u8]>,
@@ -160,7 +160,7 @@ fn set_close_on_exec(fd: RawFd) -> Result<(), ExecutorError> {
 }
 
 /// Builds the explicit command environment without consulting ambient process values.
-pub fn build_environment(request: &FrozenRequest) -> Vec<CString> {
+fn build_environment(request: &FrozenRequest) -> Vec<CString> {
     BASELINE_ENVIRONMENT
         .iter()
         .map(|(name, value)| environment_assignment(name, value))
@@ -187,7 +187,7 @@ fn build_argv(request: &FrozenRequest) -> Vec<CString> {
 }
 
 /// Resolves only the pathnames the executor may pass to `execve(2)`.
-pub fn command_candidates(argv0: &CStr) -> Vec<CString> {
+fn command_candidates(argv0: &CStr) -> Vec<CString> {
     if argv0.to_bytes().contains(&b'/') {
         return vec![argv0.to_owned()];
     }

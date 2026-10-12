@@ -421,7 +421,7 @@ async fn track_completion_inner(
     }
 }
 
-pub fn map_service_outcome(result: &str, code: i32, status: i32) -> CommandOutcome {
+fn map_service_outcome(result: &str, code: i32, status: i32) -> CommandOutcome {
     match (result, code) {
         ("success" | "exit-code", libc::CLD_EXITED) => CommandOutcome::Exited(status),
         ("success" | "signal", libc::CLD_KILLED) | ("success" | "core-dump", libc::CLD_DUMPED) => {
