@@ -77,12 +77,7 @@ impl BrokerClient {
         };
         let wire = RunWire {
             request: prepared.request.encode(),
-            description: Optional::from(
-                prepared
-                    .description
-                    .as_ref()
-                    .map(|description| description.as_str().to_owned()),
-            ),
+            description: Optional::from(prepared.description),
             cwd: prepared.cwd.into_owned_fd().into(),
             stdio,
             allow_interaction,

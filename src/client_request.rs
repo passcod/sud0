@@ -4,11 +4,11 @@ use std::io::IsTerminal;
 use thiserror::Error;
 
 use crate::cli::Cli;
-use crate::{FrozenRequest, HumanDescription, IoMode, WorkingDirectoryError, WorkingDirectoryFd};
+use crate::{FrozenRequest, IoMode, WorkingDirectoryError, WorkingDirectoryFd};
 
 pub struct PreparedClientRequest {
     pub request: FrozenRequest,
-    pub description: Option<HumanDescription>,
+    pub description: Option<String>,
     pub cwd: WorkingDirectoryFd,
 }
 
@@ -22,8 +22,6 @@ pub enum ClientRequestError {
     NonUtf8Environment { name: String },
     #[error(transparent)]
     InvalidRequest(#[from] crate::RequestError),
-    #[error(transparent)]
-    InvalidDescription(#[from] crate::DescriptionError),
 }
 
 impl PreparedClientRequest {
@@ -31,11 +29,10 @@ impl PreparedClientRequest {
         let cwd = WorkingDirectoryFd::open(cli.chdir.as_deref().unwrap_or("."))?;
         let environment = parse_environment(&cli.setenv)?;
         let request = FrozenRequest::new(cli.command, environment, io_mode)?;
-        let description = cli.description.map(HumanDescription::new).transpose()?;
 
         Ok(Self {
             request,
-            description,
+            description: cli.description,
             cwd,
         })
     }
