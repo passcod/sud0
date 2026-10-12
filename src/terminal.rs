@@ -307,11 +307,11 @@ async fn write_all_ready(fd: &AsyncFd<OwnedFd>, mut bytes: &[u8]) -> io::Result<
 #[cfg(test)]
 mod tests {
     use std::io::{Read, Write};
-    use std::os::fd::{AsFd, AsRawFd};
+    use std::net::Shutdown;
+    use std::os::fd::AsFd;
     use std::os::unix::net::UnixStream;
 
     use nix::pty::{Winsize, openpty};
-    use nix::sys::socket::{Shutdown, shutdown};
 
     use super::*;
 
@@ -339,7 +339,7 @@ mod tests {
         let mut output_reader = local_output;
 
         input_writer.write_all(input).unwrap();
-        shutdown(input_writer.as_raw_fd(), Shutdown::Write).unwrap();
+        input_writer.shutdown(Shutdown::Write).unwrap();
         let received_input = tokio::task::spawn_blocking(move || {
             let mut bytes = vec![0; input.len()];
             command_reader.read_exact(&mut bytes).unwrap();
@@ -350,7 +350,7 @@ mod tests {
         assert_eq!(received_input, input);
 
         command_writer.write_all(output).unwrap();
-        shutdown(command_writer.as_raw_fd(), Shutdown::Write).unwrap();
+        command_writer.shutdown(Shutdown::Write).unwrap();
         let received_output = tokio::task::spawn_blocking(move || {
             let mut bytes = Vec::new();
             output_reader.read_to_end(&mut bytes).unwrap();
@@ -375,11 +375,11 @@ mod tests {
             nonblocking(pump_output),
         )
         .unwrap();
-        shutdown(local_input.as_raw_fd(), Shutdown::Write).unwrap();
+        local_input.shutdown(Shutdown::Write).unwrap();
         pump.join_input().await.unwrap();
 
         command_side.write_all(b"after eof").unwrap();
-        shutdown(command_side.as_raw_fd(), Shutdown::Write).unwrap();
+        command_side.shutdown(Shutdown::Write).unwrap();
         pump.join_output().await.unwrap();
         let mut bytes = Vec::new();
         local_output.read_to_end(&mut bytes).unwrap();
