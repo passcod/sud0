@@ -38,7 +38,7 @@ const OUTCOME_SIGNALED: u8 = 2;
 const OUTCOME_SERVICE_FAILURE: u8 = 3;
 
 /// Stable, queryable invocation state used by both `Status` and `Wait`.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Clone, Serialize, Deserialize, Type)]
 pub struct InvocationStatusWire {
     pub phase: u8,
     pub outcome: u8,

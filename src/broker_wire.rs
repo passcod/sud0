@@ -9,9 +9,7 @@ use crate::{
 };
 
 /// Initial terminal dimensions supplied for a broker-allocated PTY.
-#[derive(
-    Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Type,
-)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Type)]
 pub struct WindowSize {
     pub rows: u16,
     pub columns: u16,
