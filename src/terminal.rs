@@ -1,4 +1,3 @@
-use std::ffi::CString;
 use std::io;
 use std::os::fd::{BorrowedFd, OwnedFd};
 use std::sync::Arc;
@@ -103,7 +102,6 @@ impl Drop for TerminalGuard {
     fn drop(&mut self) {
         if self.raw {
             let _ = tcsetattr(&self.terminal, OptionalActions::Now, &self.original);
-            self.raw = false;
         }
     }
 }
@@ -132,8 +130,7 @@ impl Pump {
             AsyncFd::with_interest(output, Interest::WRITABLE).map_err(TerminalError::Output)?,
         );
         let (shutdown, shutdown_rx) = watch::channel(false);
-        let input_master = master.clone();
-        let input_task = tokio::spawn(forward_input(input, input_master, shutdown_rx));
+        let input_task = tokio::spawn(forward_input(input, master.clone(), shutdown_rx));
         let output_task = tokio::spawn(forward_output(master, output));
         Ok(Self {
             shutdown,
@@ -214,10 +211,8 @@ fn reopen_descriptor(
     access: OFlag,
     stream: &'static str,
 ) -> Result<OwnedFd, TerminalError> {
-    let path = CString::new(format!("/proc/self/fd/{descriptor}"))
-        .expect("fixed decimal descriptor path contains no NUL");
     open(
-        path.as_c_str(),
+        format!("/proc/self/fd/{descriptor}").as_str(),
         access | OFlag::O_CLOEXEC | OFlag::O_NONBLOCK,
         nix::sys::stat::Mode::empty(),
     )

@@ -31,15 +31,11 @@ pub enum ClientRequestError {
 }
 
 impl PreparedClientRequest {
-    pub fn from_cli(cli: &Cli, io_mode: IoMode) -> Result<Self, ClientRequestError> {
+    pub fn from_cli(cli: Cli, io_mode: IoMode) -> Result<Self, ClientRequestError> {
         let cwd = prepare_working_directory(cli.chdir.as_deref())?;
         let environment = parse_environment(&cli.setenv)?;
-        let request = FrozenRequest::new(cli.command.clone(), environment, io_mode)?;
-        let description = cli
-            .description
-            .as_ref()
-            .map(|text| HumanDescription::new(text.clone()))
-            .transpose()?;
+        let request = FrozenRequest::new(cli.command, environment, io_mode)?;
+        let description = cli.description.map(HumanDescription::new).transpose()?;
 
         Ok(Self {
             request,

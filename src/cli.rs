@@ -1,4 +1,4 @@
-use clap::{ArgAction, Parser};
+use clap::Parser;
 
 /// Run a command as root.
 #[derive(Debug, Parser)]
@@ -13,7 +13,7 @@ pub struct Cli {
     pub chdir: Option<String>,
 
     /// Set or import an environment variable
-    #[arg(long, value_name = "NAME[=VALUE]", action = ArgAction::Append)]
+    #[arg(long, value_name = "NAME[=VALUE]")]
     pub setenv: Vec<String>,
 
     /// Allocate a pseudo-terminal

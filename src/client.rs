@@ -75,9 +75,8 @@ impl BrokerClient {
                 duplicate_cloexec(std::io::stderr().as_fd())?,
             ),
         };
-        let request = prepared.request.encode();
         let wire = RunWire {
-            request,
+            request: prepared.request.encode(),
             description: Optional::from(
                 prepared
                     .description
@@ -188,7 +187,7 @@ impl Invocation {
 
 impl Drop for Invocation {
     fn drop(&mut self) {
-        if !self.cleanup_needed.swap(false, Ordering::AcqRel) {
+        if !self.cleanup_needed.load(Ordering::Acquire) {
             return;
         }
         let proxy = self.proxy.clone();

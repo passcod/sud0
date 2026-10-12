@@ -23,7 +23,7 @@ impl WorkingDirectoryFd {
             Mode::empty(),
         )
         .map_err(WorkingDirectoryError::Open)?;
-        Self::try_from(fd)
+        Ok(Self { fd })
     }
 
     /// Returns the kernel's current UTF-8 pathname for this exact opened directory object.

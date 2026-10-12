@@ -75,7 +75,7 @@ async fn run(cli: Cli) -> Result<u8, AppError> {
         .as_ref()
         .map(|terminal| window_size(terminal.as_fd()))
         .transpose()?;
-    let prepared = PreparedClientRequest::from_cli(&cli, mode)?;
+    let prepared = PreparedClientRequest::from_cli(cli, mode)?;
     let (invocation, startup) = client
         .run(prepared, initial_size, allow_interaction)
         .await?;
