@@ -3,59 +3,18 @@
 Report vulnerabilities against the public issue tracker.
 You are encouraged to fix issues yourself if you care.
 
-## Threat model and trusted computing base
+## Not security issues
 
-`sud0` allows a local subject accepted by polkit to execute arbitrary commands as root.
-It protects the boundary between an unprivileged D-Bus client and that root execution, not a system already controlled by root or by a compromised polkit, systemd, kernel, or authentication agent.
-The trusted computing base includes the kernel, system D-Bus daemon, systemd system manager, polkit daemon and selected authentication agent, the root-owned sud0 broker and executor, and the root-owned files they load.
+The following are expected behavior and are not considered security issues:
 
-No sud0 file is setuid or setgid.
-The installed broker, executor, policies, activation entry, and service unit must be owned by root and not writable by ordinary users.
-The broker runs as root; the polkit action deliberately has no executable-owner annotation.
-
-The system-bus policy allows only root to own `nz.passcod.sud0`, while ordinary users may send calls to it.
-For each call the broker derives the caller UID, PID, pidfd, and unique bus name from authenticated D-Bus transport credentials.
-It race-safely identifies and pins that caller's live parent process, then submits the pidfd-backed parent to polkit so sequential sud0 children of one shell share native retention while different process families remain separate.
-The client cannot nominate its polkit subject, UID, PID, transient-unit properties, helper path, or unit name.
-Dynamic invocation objects are bound to their creating unique bus name; owner loss cancels pending or running work.
-
-Before authorization the broker copies and validates the request and takes ownership of the opened cwd descriptor.
-After authorization it verifies that the bus owner still exists, places the same frozen request in a write/grow/shrink/seal-protected memfd, and passes that memfd and cwd descriptor to a fixed executor through systemd.
-The executor rechecks root real/effective/saved UIDs, descriptor names and count, memfd seals, request digest and bounds, and the cwd descriptor type.
-It changes directory through the descriptor, so pathname replacement does not redirect execution.
-
-## Authorization and prompt disclosure
-
-The `nz.passcod.sud0.run` action authorizes arbitrary root command execution.
-Its defaults require administrator authentication for any or inactive sessions and use `auth_admin_keep` for active sessions.
-Polkit's native retained authorization is normally about five minutes; sud0 has no separate timer or cache.
-Retention is keyed by action and equivalent subject, not by command details, so another command can reuse a retained grant.
-
-The default prompt shows sanitized argv, a cwd path derived from the received directory descriptor, and the optional description.
-It adds an environment-override count only when overrides exist and a request digest only when command or cwd display is truncated.
-The root-owned `/etc/sud0/prompt.template` may use `{description}`, `{description_line}`, `{command}`, `{cwd}`, `{cwd_identity}`, `{environment}`, `{environment_line}`, `{request_digest}`, and `{digest_line}`.
-The broker validates and bounds that template at startup; unknown placeholders, malformed braces, missing files, or oversized input fail startup.
-A custom template can disclose explicit environment values or an unconditional digest, so administrators must treat it as security-sensitive configuration.
-Rendered values may contain secrets and are disclosed to the authentication agent; verbose local polkit logging may also record them.
-Prompt text is presentation only and is never parsed for execution.
-
-## Command resolution and environment
-
-Commands run directly without shell parsing.
-A command containing `/` is executed as that pathname.
-A bare command is searched as root in `/usr/local/sbin:/usr/local/bin:/usr/bin`; administrators must therefore protect every directory and executable on that path because replacing one changes what root executes.
-With no command, the fixed `/bin/bash` executable is used.
-
-The executor constructs `PATH`, `HOME`, `USER`, `LOGNAME`, and `SHELL` itself.
-Requested environment names are syntactically constrained, unique, bounded, and may not replace those values or activation variables.
-It also rejects `IFS`, `ENV`, `BASH_ENV`, and loader, allocator, locale-conversion, Python, Perl, Ruby, Node, Java, Go, Rust compiler, rustdoc, and Cargo control-variable families.
-This denylist reduces privileged-runtime injection but does not make arbitrary environment values safe for every possible target program; callers and administrators must understand the invoked program's own environment interface.
-
-## Metadata and resource bounds
-
-Normal broker diagnostics and transient unit names/descriptions contain neither argv nor descriptions.
-Random identifiers are used for authorization and transient-unit correlation.
-Requests cap aggregate data, element counts, individual argument and environment sizes, cwd text, and prompt rendering before root execution.
-The broker also applies per-caller and global limits to concurrent validations and outstanding invocations, and expires unclaimed terminal invocation objects after 60 seconds.
-These bounds limit broker allocations but do not constrain the CPU, memory, filesystem, or device use of an authorized target command.
-Target commands run in separate transient services and do not inherit the broker service's hardening directives.
+- A subject authorized for `nz.passcod.sud0.run` can execute arbitrary commands as root.
+- A retained polkit grant can authorize a different command from the one that prompted, normally for about five minutes within the same invoking process family.
+- Separate terminals or process families may require separate authentication.
+- Authentication agents receive the rendered command, working directory, and optional description; verbose polkit logging may record them.
+- A root-configured prompt template may additionally expose environment values, working-directory identity, or the request digest.
+- Root or an administrator can alter sud0's binaries, policy, service files, prompt template, and commands or directories on its fixed root `PATH`.
+- An authorized target command may consume system resources, access or modify anything available to root, emit terminal control sequences, or contain vulnerabilities of its own.
+- Target commands do not inherit the broker service's hardening.
+- Compromise of root, the kernel, systemd, system D-Bus, polkit, or the selected authentication agent is outside sud0's security boundary.
+- Unsupported systems, malformed requests, blocked environment names, exceeded resource limits, and invalid or missing prompt templates are rejected rather than accommodated.
+- The private D-Bus and frozen-request interfaces may change incompatibly during the 0.x series.

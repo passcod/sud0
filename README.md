@@ -42,7 +42,7 @@ Do not run `make release` or `make check` as root.
 Alternatively, on Arch Linux:
 
 ```console
-TODO
+$ makepkg -si -D packaging/arch
 ```
 
 ## Troubleshooting

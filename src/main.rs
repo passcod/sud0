@@ -1,7 +1,7 @@
 use std::os::fd::{AsFd, OwnedFd};
 use std::process::ExitCode;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use thiserror::Error;
 use tokio::signal::unix::{Signal, SignalKind, signal};
 
@@ -49,6 +49,12 @@ enum SignalEvent {
 #[tokio::main]
 async fn main() -> ExitCode {
     let cli = Cli::parse();
+    if cli.command.is_empty() && !cli.validate {
+        Cli::command().print_help().expect("failed to print help");
+        println!();
+        return ExitCode::SUCCESS;
+    }
+
     match run(cli).await {
         Ok(code) => ExitCode::from(code),
         Err(error) => {

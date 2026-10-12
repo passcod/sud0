@@ -38,7 +38,7 @@ pub struct Cli {
     )]
     pub validate: bool,
 
-    /// Command and arguments to run; defaults to /bin/bash
+    /// Command and arguments to run
     #[arg(value_name = "COMMAND [ARG...]")]
     pub command: Vec<OsString>,
 }

@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use crate::cli::Cli;
-use crate::constants::ROOT_SHELL;
 use crate::{
     FrozenRequest, HumanDescription, IoMode, RequestOptions, WorkingDirectoryError,
     WorkingDirectoryFd,
@@ -88,14 +87,10 @@ fn is_tty(fd: BorrowedFd<'_>) -> bool {
 }
 
 fn command_argv(command: &[OsString]) -> Vec<Vec<u8>> {
-    if command.is_empty() {
-        vec![ROOT_SHELL.as_bytes().to_vec()]
-    } else {
-        command
-            .iter()
-            .map(|argument| argument.as_bytes().to_vec())
-            .collect()
-    }
+    command
+        .iter()
+        .map(|argument| argument.as_bytes().to_vec())
+        .collect()
 }
 
 fn parse_environment(values: &[OsString]) -> Result<Environment, ClientRequestError> {
@@ -173,12 +168,9 @@ mod tests {
     }
 
     #[test]
-    fn defaults_to_fixed_root_shell_without_interpretation() {
-        let argv = command_argv(&[]);
-        assert_eq!(argv, vec![b"/bin/bash".to_vec()]);
-
-        let explicit = command_argv(&[OsString::from("echo; id"), OsString::from("$HOME")]);
-        assert_eq!(explicit, vec![b"echo; id".to_vec(), b"$HOME".to_vec()]);
+    fn command_arguments_are_not_interpreted() {
+        let argv = command_argv(&[OsString::from("echo; id"), OsString::from("$HOME")]);
+        assert_eq!(argv, vec![b"echo; id".to_vec(), b"$HOME".to_vec()]);
     }
 
     #[test]
@@ -213,6 +205,7 @@ mod tests {
     #[test]
     fn frozen_request_enforces_environment_policy() {
         let mut input = cli();
+        input.command.push(OsString::from("id"));
         input.setenv.push(OsString::from("PATH=/tmp"));
         let error = PreparedClientRequest::from_cli(&input, IoMode::Pipe).unwrap_err();
         assert!(matches!(
