@@ -256,16 +256,23 @@ struct InvocationPermit {
 
 impl Drop for InvocationPermit {
     fn drop(&mut self) {
-        self.limits.release_invocation(&self.owner);
+        let mut counts = self.limits.invocations.lock().unwrap();
+        let count = counts
+            .get_mut(&self.owner)
+            .expect("active permit is counted");
+        *count -= 1;
+        if *count == 0 {
+            counts.remove(&self.owner);
+        }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct InvocationObject {
     shared: Arc<SharedInvocation>,
     connection: Connection,
     path: OwnedObjectPath,
-    _permit: Arc<InvocationPermit>,
+    _permit: InvocationPermit,
 }
 
 impl InvocationObject {
@@ -366,47 +373,28 @@ impl InvocationObject {
 }
 
 #[derive(Debug, Default)]
-struct LimitState {
-    invocations: HashMap<String, usize>,
-}
-
-#[derive(Debug, Default)]
 struct BrokerLimits {
-    state: Mutex<LimitState>,
+    invocations: Mutex<HashMap<String, usize>>,
 }
 
 impl BrokerLimits {
     fn acquire_invocation(
         self: &Arc<Self>,
         owner: &str,
-    ) -> Result<Arc<InvocationPermit>, BrokerDbusError> {
-        let mut state = self.state.lock().unwrap();
-        let global = state.invocations.values().sum::<usize>();
-        let owner_count = state.invocations.get(owner).copied().unwrap_or_default();
+    ) -> Result<InvocationPermit, BrokerDbusError> {
+        let mut invocations = self.invocations.lock().unwrap();
+        let global = invocations.values().sum::<usize>();
+        let owner_count = invocations.get(owner).copied().unwrap_or_default();
         if global >= MAX_GLOBAL_INVOCATIONS || owner_count >= MAX_OWNER_INVOCATIONS {
             return Err(BrokerDbusError::LimitsExceeded(
                 "too many outstanding invocations".to_owned(),
             ));
         }
-        state.invocations.insert(owner.to_owned(), owner_count + 1);
-        Ok(Arc::new(InvocationPermit {
+        invocations.insert(owner.to_owned(), owner_count + 1);
+        Ok(InvocationPermit {
             owner: owner.to_owned(),
             limits: self.clone(),
-        }))
-    }
-
-    fn release_invocation(&self, owner: &str) {
-        release_limit(&mut self.state.lock().unwrap().invocations, owner);
-    }
-}
-
-fn release_limit(counts: &mut HashMap<String, usize>, owner: &str) {
-    let Some(count) = counts.get_mut(owner) else {
-        return;
-    };
-    *count -= 1;
-    if *count == 0 {
-        counts.remove(owner);
+        })
     }
 }
 
@@ -470,7 +458,7 @@ impl BrokerManager {
                     shared: shared.clone(),
                     connection: self.connection.clone(),
                     path: path.clone(),
-                    _permit: permit.clone(),
+                    _permit: permit,
                 },
             )
             .await

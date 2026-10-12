@@ -130,7 +130,7 @@ pub struct Cancellation {
 }
 
 impl Cancellation {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let (sender, _) = watch::channel(None);
         Self { sender }
     }
@@ -152,12 +152,6 @@ impl Cancellation {
 
     pub fn reason(&self) -> Option<CancellationReason> {
         *self.sender.borrow()
-    }
-}
-
-impl Default for Cancellation {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

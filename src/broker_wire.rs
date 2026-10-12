@@ -116,10 +116,6 @@ impl PreparedRequest {
         &self.cwd
     }
 
-    pub fn io(&self) -> &PreparedIo {
-        &self.io
-    }
-
     pub const fn allow_interaction(&self) -> bool {
         self.allow_interaction
     }
@@ -257,11 +253,17 @@ mod tests {
         ))
         .unwrap();
 
-        let PreparedIo::Pipe {
-            stdin,
-            stdout,
-            stderr,
-        } = prepared.io()
+        assert_eq!(prepared.request(), &request(IoMode::Pipe));
+        assert_eq!(prepared.description().unwrap().as_str(), "maintenance");
+        let (
+            _,
+            _,
+            PreparedIo::Pipe {
+                stdin,
+                stdout,
+                stderr,
+            },
+        ) = prepared.into_launch_parts()
         else {
             panic!("expected pipe mode");
         };
@@ -269,8 +271,6 @@ mod tests {
             [stdin.as_raw_fd(), stdout.as_raw_fd(), stderr.as_raw_fd()],
             raw
         );
-        assert_eq!(prepared.request(), &request(IoMode::Pipe));
-        assert_eq!(prepared.description().unwrap().as_str(), "maintenance");
     }
 
     #[test]
@@ -284,8 +284,8 @@ mod tests {
         let prepared =
             PreparedRequest::from_wire(wire(IoMode::Pty, StdioWire::pty(), Some(size))).unwrap();
         assert!(matches!(
-            prepared.io(),
-            PreparedIo::Pty { initial_size } if *initial_size == size
+            prepared.into_launch_parts().2,
+            PreparedIo::Pty { initial_size } if initial_size == size
         ));
     }
 

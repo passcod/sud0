@@ -42,14 +42,6 @@ impl SealedRequestFd {
         file.write_all_at(&encoded, 0)
             .map_err(SealedRequestError::Write)?;
         fcntl(&file, FcntlArg::F_ADD_SEALS(REQUIRED_SEALS)).map_err(SealedRequestError::Seal)?;
-
-        let actual_seals = get_seals(&file)?;
-        if !actual_seals.contains(REQUIRED_SEALS) {
-            return Err(SealedRequestError::MissingSeals {
-                actual: actual_seals,
-            });
-        }
-
         Ok(Self { file })
     }
 

@@ -112,7 +112,9 @@ impl BrokerClient {
             Ok::<_, ClientError>((invocation, startup))
         }
         .await;
-        stop_agent(agent).await;
+        if let Some(agent) = agent {
+            agent.stop().await;
+        }
         let (invocation, startup) = setup?;
         match startup {
             Ok(Startup::Running) => Ok((invocation, Startup::Running)),
@@ -235,12 +237,6 @@ async fn start_agent(
     match AuthenticationAgent::start().await {
         Ok(agent) => (Some(agent), None),
         Err(error) => (None, Some(error)),
-    }
-}
-
-async fn stop_agent(agent: Option<AuthenticationAgent>) {
-    if let Some(agent) = agent {
-        agent.stop().await;
     }
 }
 

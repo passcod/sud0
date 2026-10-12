@@ -10,7 +10,7 @@ use crate::request::FrozenRequest;
 const ALLOWED_PLACEHOLDERS: &[&str] = &["command", "cwd", "description_line", "environment_line"];
 
 /// Validated presentation-only context supplied by a human caller.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct HumanDescription(String);
 
 impl HumanDescription {
@@ -31,7 +31,7 @@ impl HumanDescription {
 }
 
 /// A validated root-owned Leon template for authentication messages.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct PromptTemplate {
     source: String,
 }
