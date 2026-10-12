@@ -396,7 +396,7 @@ fn terminal_is_ready(snapshot: &TerminalSnapshot) -> bool {
 }
 
 /// A malformed systemd descriptor-activation environment.
-#[derive(Debug, PartialEq, Eq, Error)]
+#[derive(Debug, PartialEq, Error)]
 pub enum ActivationError {
     #[error("LISTEN_PID is missing")]
     MissingListenPid,
