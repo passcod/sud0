@@ -636,23 +636,27 @@ async fn run_pipeline(pipeline: RunPipeline) {
         shared.install_pty(master);
     }
     shared.update(InvocationStatusWire::phase(PHASE_RUNNING));
-    match completion.wait().await {
-        Ok(outcome) => shared.update(InvocationStatusWire::from_outcome(outcome)),
-        Err(LaunchError::Systemd(error)) => {
+    match completion.await {
+        Ok(Ok(outcome)) => shared.update(InvocationStatusWire::from_outcome(outcome)),
+        Err(_) => shared.update(InvocationStatusWire::terminal_phase(
+            PHASE_FAILED,
+            "tracking-lost",
+        )),
+        Ok(Err(LaunchError::Systemd(error))) => {
             eprintln!("sud0-broker: failed to track transient command: {error}");
             shared.update(InvocationStatusWire::terminal_phase(
                 PHASE_FAILED,
                 "tracking-systemd",
             ));
         }
-        Err(LaunchError::Cleanup(error)) => {
+        Ok(Err(LaunchError::Cleanup(error))) => {
             eprintln!("sud0-broker: failed to clean up transient command: {error}");
             shared.update(InvocationStatusWire::terminal_phase(
                 PHASE_FAILED,
                 "tracking-cleanup",
             ));
         }
-        Err(error) => {
+        Ok(Err(error)) => {
             eprintln!("sud0-broker: failed to track transient command: {error}");
             shared.update(InvocationStatusWire::terminal_phase(
                 PHASE_FAILED,

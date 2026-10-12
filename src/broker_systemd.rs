@@ -199,17 +199,7 @@ fn transient_properties(prepared: &PreparedLaunch) -> Vec<(&'static str, Value<'
 /// until systemd reports the `Type=exec` start job as `done`.
 pub struct StartedUnit {
     pub pty_master: Option<OwnedFd>,
-    pub completion: UnitCompletion,
-}
-
-pub struct UnitCompletion {
-    receiver: oneshot::Receiver<Result<CommandOutcome, LaunchError>>,
-}
-
-impl UnitCompletion {
-    pub async fn wait(self) -> Result<CommandOutcome, LaunchError> {
-        self.receiver.await.map_err(|_| LaunchError::TrackerLost)?
-    }
+    pub completion: oneshot::Receiver<Result<CommandOutcome, LaunchError>>,
 }
 
 /// Direct systemd transient-service launcher sharing one stable system-bus connection.
@@ -317,9 +307,7 @@ impl SystemdLauncher {
 
         Ok(StartedUnit {
             pty_master,
-            completion: UnitCompletion {
-                receiver: completion,
-            },
+            completion,
         })
     }
 }
