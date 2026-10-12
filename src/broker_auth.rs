@@ -122,7 +122,7 @@ pub enum CancellationReason {
 }
 
 /// A clonable cancellation source shared by the invocation object and owner/shutdown monitors.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Cancellation {
     sender: watch::Sender<Option<CancellationReason>>,
 }

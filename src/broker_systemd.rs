@@ -203,7 +203,7 @@ pub struct StartedUnit {
 }
 
 /// Direct systemd transient-service launcher sharing one stable system-bus connection.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SystemdLauncher {
     connection: zbus::Connection,
 }
