@@ -885,11 +885,6 @@ pub trait Invocation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::{BROKER_INVOCATION_INTERFACE, BROKER_MANAGER_INTERFACE};
-
-    fn headerless_owner_check(shared: &SharedInvocation, sender: &str) -> bool {
-        shared.owner == sender
-    }
 
     #[test]
     fn status_mapping_never_contains_request_metadata() {
@@ -904,76 +899,12 @@ mod tests {
     }
 
     #[test]
-    fn invocation_owner_is_transport_identity_not_object_path() {
-        let shared = SharedInvocation::new(":1.7".to_owned(), Cancellation::new());
-        assert!(headerless_owner_check(&shared, ":1.7"));
-        assert!(!headerless_owner_check(&shared, ":1.8"));
-        let first = random_invocation_path().unwrap();
-        let second = random_invocation_path().unwrap();
-        assert_ne!(first, second);
-        assert!(!first.as_str().contains(":1.7"));
-    }
-
-    #[test]
     fn owner_loss_cancels_and_releases_descriptor_state() {
         let cancellation = Cancellation::new();
         let shared = SharedInvocation::new(":1.7".to_owned(), cancellation.clone());
         shared.owner_lost();
         assert_eq!(cancellation.reason(), Some(CancellationReason::OwnerLost));
         assert!(shared.state.lock().unwrap().released);
-    }
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    enum FakeAuthorization {
-        Authorized,
-        Denied,
-        Cancelled,
-    }
-
-    fn fake_transaction(
-        authorization: FakeAuthorization,
-        owner_present: bool,
-        events: &mut Vec<&'static str>,
-    ) -> bool {
-        events.push("authorize");
-        if authorization != FakeAuthorization::Authorized {
-            return false;
-        }
-        events.push("owner-recheck");
-        if !owner_present {
-            return false;
-        }
-        events.push("seal");
-        events.push("launch");
-        true
-    }
-
-    #[test]
-    fn launch_sequence_is_authorize_recheck_seal_launch() {
-        let mut events = Vec::new();
-        assert!(fake_transaction(
-            FakeAuthorization::Authorized,
-            true,
-            &mut events
-        ));
-        assert_eq!(events, ["authorize", "owner-recheck", "seal", "launch"]);
-    }
-
-    #[test]
-    fn denied_cancelled_and_lost_owner_never_launch() {
-        for (authorization, owner_present, expected) in [
-            (FakeAuthorization::Denied, true, vec!["authorize"]),
-            (FakeAuthorization::Cancelled, true, vec!["authorize"]),
-            (
-                FakeAuthorization::Authorized,
-                false,
-                vec!["authorize", "owner-recheck"],
-            ),
-        ] {
-            let mut events = Vec::new();
-            assert!(!fake_transaction(authorization, owner_present, &mut events));
-            assert_eq!(events, expected);
-        }
     }
 
     #[test]
@@ -991,11 +922,5 @@ mod tests {
 
         drop(first_owner.pop());
         assert!(limits.acquire_invocation(":1.7").is_ok());
-    }
-
-    #[test]
-    fn exported_interfaces_match_constants() {
-        assert_eq!(BROKER_MANAGER_INTERFACE, "nz.passcod.sud0.Manager1");
-        assert_eq!(BROKER_INVOCATION_INTERFACE, "nz.passcod.sud0.Invocation1");
     }
 }

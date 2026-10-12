@@ -303,6 +303,7 @@ mod tests {
     #[test]
     fn maps_exit_and_signal_statuses() {
         assert_eq!(exit_code(&status(3, 1, 42, 0)).unwrap(), 42);
+        assert_eq!(exit_code(&status(3, 1, 255, 0)).unwrap(), 255);
         assert_eq!(exit_code(&status(3, 2, 0, 9)).unwrap(), 137);
         assert!(matches!(
             exit_code(&status(6, 0, 0, 0)),

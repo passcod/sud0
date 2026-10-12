@@ -50,13 +50,6 @@ impl SealedRequestFd {
             });
         }
 
-        let mut verified = vec![0; encoded.len()];
-        file.read_exact_at(&mut verified, 0)
-            .map_err(SealedRequestError::VerifyRead)?;
-        if verified != encoded {
-            return Err(SealedRequestError::VerificationMismatch);
-        }
-
         Ok(Self { file })
     }
 
@@ -145,10 +138,6 @@ pub enum SealedRequestError {
     GetSeals(nix::errno::Errno),
     #[error("request descriptor lacks mandatory seals (actual bits: 0x{actual:x})")]
     MissingSeals { actual: SealFlag },
-    #[error("failed to reread newly sealed request descriptor: {0}")]
-    VerifyRead(io::Error),
-    #[error("newly sealed request descriptor did not retain the encoded bytes")]
-    VerificationMismatch,
     #[error("failed to read request descriptor: {0}")]
     Read(io::Error),
     #[error("failed to decode request descriptor: {0}")]

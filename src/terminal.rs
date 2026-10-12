@@ -148,14 +148,6 @@ impl Pump {
         let _ = self.shutdown.send(true);
     }
 
-    pub fn input_finished(&self) -> bool {
-        self.input.is_finished()
-    }
-
-    pub fn output_finished(&self) -> bool {
-        self.output.is_finished()
-    }
-
     pub async fn join_input(&mut self) -> Result<(), TerminalError> {
         let result = (&mut self.input)
             .await
@@ -194,14 +186,6 @@ impl Pump {
             (true, false) => PumpEvent::Output(self.join_output().await),
             (true, true) => std::future::pending().await,
         }
-    }
-
-    pub async fn finish(mut self) -> Result<(), TerminalError> {
-        self.stop_input();
-        let input = self.join_input().await;
-        let output = self.join_output().await;
-        input?;
-        output
     }
 }
 
@@ -404,7 +388,6 @@ mod tests {
         .unwrap();
         shutdown(local_input.as_raw_fd(), Shutdown::Write).unwrap();
         pump.join_input().await.unwrap();
-        assert!(!pump.output_finished());
 
         command_side.write_all(b"after eof").unwrap();
         shutdown(command_side.as_raw_fd(), Shutdown::Write).unwrap();

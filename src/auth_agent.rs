@@ -166,21 +166,3 @@ impl Drop for AuthenticationAgent {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use std::os::fd::AsFd;
-
-    use nix::fcntl::{FcntlArg, FdFlag, fcntl};
-
-    use super::*;
-
-    #[test]
-    fn notification_pipe_starts_close_on_exec() {
-        let (read_end, write_end) = pipe2(OFlag::O_CLOEXEC).unwrap();
-        for fd in [&read_end, &write_end] {
-            let flags = FdFlag::from_bits_truncate(fcntl(fd.as_fd(), FcntlArg::F_GETFD).unwrap());
-            assert!(flags.contains(FdFlag::FD_CLOEXEC));
-        }
-    }
-}

@@ -34,11 +34,10 @@ getrandom = "0.4.3"
 hex = "0.4.3"
 leon = { version = "3.0.3", default-features = false }
 libc = "0.2.190"
-nix = { version = "0.31.3", features = ["fs", "process", "signal", "socket", "term", "user", "poll"] }
+nix = { version = "0.31.3", features = ["fs", "process", "signal", "socket", "term", "user"] }
 postcard = { version = "1.1.3", default-features = false, features = ["alloc"] }
 rustix = { version = "1.1.5", features = ["termios"] }
 serde = { version = "1.0.229", features = ["derive"] }
-sha2 = "0.11.0"
 thiserror = "2.0.21"
 tokio = { version = "1.53.2", features = ["macros", "rt-multi-thread", "signal", "io-util", "process", "time", "sync"] }
 tracing = "0.1.44"
@@ -46,5 +45,4 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 zbus = { version = "5.19.0", features = ["tokio"] }
 
 [dev-dependencies]
-proptest = "1.12.0"
 tempfile = "3.27.0"

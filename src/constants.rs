@@ -26,10 +26,6 @@ pub const EXECUTOR_PATH: &str = "/usr/lib/sud0/sud0-exec";
 pub const BROKER_BUS_NAME: &str = "nz.passcod.sud0";
 /// Stable object path exposing the broker manager.
 pub const BROKER_MANAGER_PATH: &str = "/nz/passcod/sud0";
-/// Public manager interface used to create invocations.
-pub const BROKER_MANAGER_INTERFACE: &str = "nz.passcod.sud0.Manager1";
-/// Interface implemented by owner-bound dynamic invocation objects.
-pub const BROKER_INVOCATION_INTERFACE: &str = "nz.passcod.sud0.Invocation1";
 /// The only PolicyKit action the broker may request.
 pub const POLKIT_RUN_ACTION: &str = "nz.passcod.sud0.run";
 /// Fixed non-sensitive description for transient command services.
