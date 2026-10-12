@@ -147,7 +147,6 @@ pub enum SealedRequestError {
 #[cfg(test)]
 mod tests {
     use std::io::{Seek, Write};
-    use std::os::fd::AsRawFd;
 
     use super::*;
     use crate::IoMode;
@@ -181,7 +180,6 @@ mod tests {
         assert_eq!(decode_sealed_request(&file).unwrap(), request);
         let seals = get_seals(&file).unwrap();
         assert!(seals.contains(REQUIRED_SEALS));
-        assert_ne!(file.as_raw_fd(), -1);
     }
 
     #[test]

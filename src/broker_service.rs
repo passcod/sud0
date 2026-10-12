@@ -872,7 +872,6 @@ mod tests {
             status: 22,
         });
         assert_eq!(status.error_category, "service-failure");
-        assert!(!status.error_category.contains("exit-code"));
         assert!(status.is_terminal());
     }
 
@@ -880,9 +879,12 @@ mod tests {
     fn owner_loss_cancels_and_releases_descriptor_state() {
         let cancellation = Cancellation::new();
         let shared = SharedInvocation::new(":1.7".to_owned(), cancellation.clone());
+        shared.install_pty(std::fs::File::open("/dev/null").unwrap().into());
         shared.owner_lost();
         assert_eq!(cancellation.reason(), Some(CancellationReason::OwnerLost));
-        assert!(shared.state.lock().unwrap().released);
+        let state = shared.state.lock().unwrap();
+        assert!(state.released);
+        assert!(state.pty_master.is_none());
     }
 
     #[test]

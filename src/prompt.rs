@@ -225,14 +225,13 @@ mod tests {
             "two words",
             "",
             "quote\"\\",
-            "<&>\n\u{202e}",
+            "<&>\n\r\t\u{7f}\u{2028}\u{2029}\u{061c}\u{200e}\u{202e}\u{2066}\u{206f}",
         ]))
         .unwrap();
         assert_eq!(
             display,
-            "[\"echo\", \"two words\", \"\", \"quote\\\"\\\\\", \"\\u{3c}\\u{26}\\u{3e}\\n\\u{202e}\"]"
+            "[\"echo\", \"two words\", \"\", \"quote\\\"\\\\\", \"\\u{3c}\\u{26}\\u{3e}\\n\\r\\t\\u{7f}\\u{2028}\\u{2029}\\u{61c}\\u{200e}\\u{202e}\\u{2066}\\u{206f}\"]"
         );
-        assert!(!display.contains(['<', '>', '&', '\n', '\r', '\t']));
     }
 
     #[test]
@@ -245,7 +244,6 @@ mod tests {
             prompt,
             "Authentication is required to run as root:\ninspect \\u{3c}account\\u{3e}\n[\"id\"]\nin /actual\nwith 1 environment override(s)"
         );
-        assert!(!prompt.contains("LANG"));
     }
 
     #[test]

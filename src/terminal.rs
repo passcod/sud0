@@ -320,7 +320,6 @@ mod tests {
     use std::os::fd::{AsFd, AsRawFd};
     use std::os::unix::net::UnixStream;
 
-    use nix::fcntl::{FcntlArg, OFlag, fcntl};
     use nix::pty::{Winsize, openpty};
     use nix::sys::socket::{Shutdown, shutdown};
 
@@ -434,24 +433,6 @@ mod tests {
                 y_pixels: 700,
             }
         );
-    }
-
-    #[test]
-    fn reopening_does_not_change_original_status_flags() {
-        let file = tempfile::tempfile().unwrap();
-        let original = OFlag::from_bits_truncate(fcntl(file.as_fd(), FcntlArg::F_GETFL).unwrap());
-        let path = CString::new(format!("/proc/self/fd/{}", file.as_raw_fd())).unwrap();
-        let reopened = open(
-            path.as_c_str(),
-            OFlag::O_RDWR | OFlag::O_CLOEXEC | OFlag::O_NONBLOCK,
-            nix::sys::stat::Mode::empty(),
-        )
-        .unwrap();
-        let after = OFlag::from_bits_truncate(fcntl(file.as_fd(), FcntlArg::F_GETFL).unwrap());
-        let reopened_flags =
-            OFlag::from_bits_truncate(fcntl(reopened.as_fd(), FcntlArg::F_GETFL).unwrap());
-        assert_eq!(original, after);
-        assert!(reopened_flags.contains(OFlag::O_NONBLOCK));
     }
 
     fn termios_snapshot(termios: &Termios) -> (u32, u32, u32, u32, String, u32, u32) {

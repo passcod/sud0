@@ -83,6 +83,15 @@ mod tests {
             FrozenRequest::decode(&[0xff]),
             Err(ProtocolError::Decode(_))
         ));
+        let encoded = request().encode().unwrap();
+        assert!(matches!(
+            FrozenRequest::decode(&encoded[..encoded.len() - 1]),
+            Err(ProtocolError::Decode(_))
+        ));
+        assert!(matches!(
+            FrozenRequest::decode(&vec![0; MAX_ENCODED_REQUEST_BYTES + 1]),
+            Err(ProtocolError::EncodedRequestTooLarge { .. })
+        ));
 
         let mut trailing = request().encode().unwrap();
         trailing.push(0);

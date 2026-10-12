@@ -298,6 +298,45 @@ mod tests {
     }
 
     #[test]
+    fn enforces_quantitative_limits() {
+        assert!(matches!(
+            FrozenRequest::new(
+                vec!["x".to_owned(); MAX_ARGUMENTS + 1],
+                vec![],
+                IoMode::Pipe
+            ),
+            Err(RequestError::TooManyArguments { .. })
+        ));
+        assert!(matches!(
+            FrozenRequest::new(
+                vec!["true".to_owned()],
+                vec![("X".to_owned(), String::new()); MAX_ENVIRONMENT_VARIABLES + 1],
+                IoMode::Pipe
+            ),
+            Err(RequestError::TooManyEnvironmentVariables { .. })
+        ));
+        assert!(matches!(
+            request(
+                vec!["true"],
+                vec![(&"X".repeat(MAX_ENVIRONMENT_NAME_BYTES + 1), "")]
+            ),
+            Err(RequestError::EnvironmentNameTooLong { .. })
+        ));
+        assert!(matches!(
+            request(
+                vec!["true"],
+                vec![("X", &"x".repeat(MAX_ENVIRONMENT_VALUE_BYTES + 1))]
+            ),
+            Err(RequestError::EnvironmentValueTooLong { .. })
+        ));
+        let argv = (0..9).map(|_| "x".repeat(MAX_ARGUMENT_BYTES)).collect();
+        assert!(matches!(
+            FrozenRequest::new(argv, vec![], IoMode::Pipe),
+            Err(RequestError::RequestTooLarge { .. })
+        ));
+    }
+
+    #[test]
     fn canonicalizes_environment_order() {
         let request = request(vec!["true"], vec![("Z_VAR", "last"), ("A_VAR", "first")]).unwrap();
         assert_eq!(
