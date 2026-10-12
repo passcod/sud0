@@ -12,7 +12,7 @@ use zbus::names::BusName;
 use zbus::zvariant::{OwnedFd as ZOwnedFd, OwnedObjectPath, Type};
 use zbus::{Connection, DBusError, interface};
 
-use crate::broker_auth::{ZbusAuthority, authorize};
+use crate::broker_auth::authorize;
 use crate::{
     AuthorizationOutcome, AuthorizationRequest, CallerIdentity, Cancellation, CancellationReason,
     CommandOutcome, LaunchError, LaunchRequest, PreparedRequest, PromptTemplate, RunWire,
@@ -319,7 +319,9 @@ impl InvocationObject {
 
     async fn cancel(&self, #[zbus(header)] header: Header<'_>) -> Result<(), BrokerDbusError> {
         self.shared.check_owner(&header)?;
-        self.shared.cancellation.cancel(CancellationReason::Caller);
+        self.shared
+            .cancellation
+            .cancel(CancellationReason::Cancelled);
         Ok(())
     }
 
@@ -508,7 +510,7 @@ async fn run_pipeline(pipeline: RunPipeline) {
     let shutdown_cancellation = cancellation.clone();
     let _shutdown_monitor = AbortOnDrop(tokio::spawn(async move {
         if shutdown.wait_for(|value| *value).await.is_ok() {
-            shutdown_cancellation.cancel(CancellationReason::Shutdown);
+            shutdown_cancellation.cancel(CancellationReason::Cancelled);
         }
     }));
 
@@ -538,9 +540,8 @@ async fn run_pipeline(pipeline: RunPipeline) {
             return;
         }
     };
-    let authority = ZbusAuthority::new(connection.clone());
     let outcome = match authorize(
-        &authority,
+        &connection,
         &caller,
         &authorization,
         cancellation.subscribe(),
@@ -592,7 +593,7 @@ async fn run_pipeline(pipeline: RunPipeline) {
     if let Some(reason) = cancellation.reason() {
         let category = match reason {
             CancellationReason::OwnerLost => "owner-lost",
-            CancellationReason::Caller | CancellationReason::Shutdown => "cancelled",
+            CancellationReason::Cancelled => "cancelled",
         };
         shared.update(InvocationStatusWire::terminal_phase(
             PHASE_CANCELLED,

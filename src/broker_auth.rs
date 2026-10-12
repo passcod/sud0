@@ -94,18 +94,6 @@ impl AuthorizationRequest {
             cancellation_id: random_identifier("sud0-auth")?,
         })
     }
-
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-
-    pub const fn flags(&self) -> u32 {
-        self.flags
-    }
-
-    pub fn cancellation_id(&self) -> &str {
-        &self.cancellation_id
-    }
 }
 
 fn random_identifier(prefix: &str) -> Result<String, AuthorizationError> {
@@ -116,9 +104,8 @@ fn random_identifier(prefix: &str) -> Result<String, AuthorizationError> {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CancellationReason {
-    Caller,
+    Cancelled,
     OwnerLost,
-    Shutdown,
 }
 
 /// A clonable cancellation source shared by the invocation object and owner/shutdown monitors.
@@ -192,13 +179,13 @@ pub(crate) async fn authorize<A: Authority>(
         _ = cancellation.changed() => {
             // The result can legitimately report that the check has just completed. Cancellation
             // still wins locally and no authorization result from this check may permit launch.
-            let _ = authority.cancel(request.cancellation_id()).await;
+            let _ = authority.cancel(&request.cancellation_id).await;
             Ok(AuthorizationOutcome::Cancelled)
         }
         result = &mut check => {
             let result = result?;
             if cancellation.borrow().is_some() {
-                let _ = authority.cancel(request.cancellation_id()).await;
+                let _ = authority.cancel(&request.cancellation_id).await;
                 return Ok(AuthorizationOutcome::Cancelled);
             }
             Ok(if result {
@@ -210,23 +197,13 @@ pub(crate) async fn authorize<A: Authority>(
     }
 }
 
-pub(crate) struct ZbusAuthority {
-    connection: zbus::Connection,
-}
-
-impl ZbusAuthority {
-    pub const fn new(connection: zbus::Connection) -> Self {
-        Self { connection }
-    }
-}
-
-impl Authority for ZbusAuthority {
+impl Authority for zbus::Connection {
     async fn check(
         &self,
         caller: &CallerIdentity,
         request: &AuthorizationRequest,
     ) -> Result<bool, AuthorizationError> {
-        let proxy = PolicyKitAuthorityProxy::new(&self.connection)
+        let proxy = PolicyKitAuthorityProxy::new(self)
             .await
             .map_err(AuthorizationError::PolicyKit)?;
         let mut subject_details = HashMap::new();
@@ -238,14 +215,14 @@ impl Authority for ZbusAuthority {
             Value::new(Fd::from(caller.authorization_process_fd().as_fd())),
         );
         let mut details = HashMap::new();
-        details.insert("polkit.message", request.message());
+        details.insert("polkit.message", request.message.as_str());
         let (authorized, _challenge, result_details) = proxy
             .check_authorization(
                 ("unix-process", subject_details),
                 POLKIT_RUN_ACTION,
                 details,
-                request.flags(),
-                request.cancellation_id(),
+                request.flags,
+                &request.cancellation_id,
             )
             .await
             .map_err(AuthorizationError::PolicyKit)?;
@@ -256,7 +233,7 @@ impl Authority for ZbusAuthority {
     }
 
     async fn cancel(&self, cancellation_id: &str) -> Result<(), AuthorizationError> {
-        let proxy = PolicyKitAuthorityProxy::new(&self.connection)
+        let proxy = PolicyKitAuthorityProxy::new(self)
             .await
             .map_err(AuthorizationError::PolicyKit)?;
         proxy
@@ -331,10 +308,10 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(check.flags(), 1);
-        assert_eq!(authorization(false).flags(), 0);
+        assert_eq!(check.flags, 1);
+        assert_eq!(authorization(false).flags, 0);
         assert_eq!(
-            check.message(),
+            check.message,
             template
                 .render(&request(), Some(&description), "/actual")
                 .unwrap()
@@ -357,7 +334,7 @@ mod tests {
             self.calls
                 .lock()
                 .unwrap()
-                .push(format!("check:{}", request.cancellation_id()));
+                .push(format!("check:{}", request.cancellation_id));
             self.release.notified().await;
             Ok(self.result)
         }
@@ -389,13 +366,13 @@ mod tests {
             std::future::poll_fn(|context| std::task::Poll::Ready(future.as_mut().poll(context)))
                 .await;
         assert!(state.is_pending());
-        cancellation.cancel(CancellationReason::Caller);
+        cancellation.cancel(CancellationReason::Cancelled);
 
         assert_eq!(future.await.unwrap(), AuthorizationOutcome::Cancelled);
         let calls = calls.lock().unwrap();
         assert_eq!(calls.len(), 2);
-        assert_eq!(calls[0], format!("check:{}", request.cancellation_id()));
-        assert_eq!(calls[1], format!("cancel:{}", request.cancellation_id()));
+        assert_eq!(calls[0], format!("check:{}", request.cancellation_id));
+        assert_eq!(calls[1], format!("cancel:{}", request.cancellation_id));
     }
 
     #[tokio::test]
