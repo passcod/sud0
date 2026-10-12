@@ -128,14 +128,12 @@ pub fn set_pty_window_size(fd: &OwnedFd, size: WindowSize) -> Result<(), LaunchE
     rustix::termios::tcsetwinsize(fd, size).map_err(LaunchError::SetWindowSize)
 }
 
-#[derive(Debug)]
 struct PreparedLaunch {
     sealed: SealedRequestFd,
     cwd: WorkingDirectoryFd,
     io: LaunchIo,
 }
 
-#[derive(Debug)]
 enum LaunchIo {
     Pty {
         master: OwnedFd,
