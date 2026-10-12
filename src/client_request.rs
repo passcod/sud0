@@ -113,6 +113,12 @@ mod tests {
             parse_environment(&["NAME=a=b".to_owned()]).unwrap(),
             [("NAME".to_owned(), "a=b".to_owned())]
         );
+        let path = env::var("PATH").unwrap();
+        assert_eq!(
+            parse_environment(&["PATH".to_owned()]).unwrap(),
+            [("PATH".to_owned(), path)]
+        );
+
         let name = format!("SUD0_TEST_MISSING_{}", std::process::id());
         // SAFETY: This process-unique variable is not concurrently accessed by another test.
         unsafe { env::remove_var(&name) };
@@ -121,20 +127,18 @@ mod tests {
             Err(ClientRequestError::MissingEnvironment { .. })
         ));
 
-        if env::var_os("SUD0_TEST_NON_UTF8").is_some() {
+        if let Ok(name) = env::var("SUD0_TEST_NON_UTF8_NAME") {
             assert!(matches!(
-                parse_environment(&["SUD0_TEST_NON_UTF8".to_owned()]),
+                parse_environment(&[name]),
                 Err(ClientRequestError::NonUtf8Environment { .. })
             ));
         } else {
+            let name = format!("SUD0_TEST_NON_UTF8_{}", std::process::id());
             let status = Command::new(std::env::current_exe().unwrap())
                 .arg("--exact")
                 .arg("client_request::tests::environment_splits_first_equals_and_reports_missing_import")
-                .arg("--nocapture")
-                .env(
-                    "SUD0_TEST_NON_UTF8",
-                    OsString::from_vec(vec![b'v', 0xff]),
-                )
+                .env("SUD0_TEST_NON_UTF8_NAME", &name)
+                .env(name, OsString::from_vec(vec![b'v', 0xff]))
                 .status()
                 .unwrap();
             assert!(status.success());
