@@ -170,33 +170,15 @@ impl PreparedIo {
 #[derive(Debug, Error)]
 pub enum PrepareError {
     #[error("invalid encoded request")]
-    Request(#[source] ProtocolError),
+    Request(#[from] ProtocolError),
     #[error("invalid presentation description")]
-    Description(#[source] DescriptionError),
+    Description(#[from] DescriptionError),
     #[error("invalid working-directory descriptor")]
-    WorkingDirectory(#[source] WorkingDirectoryError),
+    WorkingDirectory(#[from] WorkingDirectoryError),
     #[error("request I/O mode does not match supplied descriptors")]
     IoModeMismatch,
     #[error("PTY dimensions must have nonzero rows and columns")]
     InvalidWindowSize,
-}
-
-impl From<ProtocolError> for PrepareError {
-    fn from(source: ProtocolError) -> Self {
-        Self::Request(source)
-    }
-}
-
-impl From<DescriptionError> for PrepareError {
-    fn from(source: DescriptionError) -> Self {
-        Self::Description(source)
-    }
-}
-
-impl From<WorkingDirectoryError> for PrepareError {
-    fn from(source: WorkingDirectoryError) -> Self {
-        Self::WorkingDirectory(source)
-    }
 }
 
 #[cfg(test)]
