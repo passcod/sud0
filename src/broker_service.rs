@@ -639,21 +639,21 @@ async fn run_pipeline(pipeline: RunPipeline) {
     match completion.wait().await {
         Ok(outcome) => shared.update(InvocationStatusWire::from_outcome(outcome)),
         Err(LaunchError::Systemd(error)) => {
-            tracing::error!(error = %error, "failed to track transient command");
+            eprintln!("sud0-broker: failed to track transient command: {error}");
             shared.update(InvocationStatusWire::terminal_phase(
                 PHASE_FAILED,
                 "tracking-systemd",
             ));
         }
         Err(LaunchError::Cleanup(error)) => {
-            tracing::error!(error = %error, "failed to clean up transient command");
+            eprintln!("sud0-broker: failed to clean up transient command: {error}");
             shared.update(InvocationStatusWire::terminal_phase(
                 PHASE_FAILED,
                 "tracking-cleanup",
             ));
         }
         Err(error) => {
-            tracing::error!(error = %error, "failed to track transient command");
+            eprintln!("sud0-broker: failed to track transient command: {error}");
             shared.update(InvocationStatusWire::terminal_phase(
                 PHASE_FAILED,
                 "tracking",

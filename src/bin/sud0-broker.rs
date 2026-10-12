@@ -3,24 +3,14 @@ use std::process::ExitCode;
 use sud0::constants::{BROKER_BUS_NAME, BROKER_MANAGER_PATH, PROMPT_TEMPLATE_PATH};
 use sud0::{BrokerManager, PromptTemplate, SystemdLauncher};
 use tokio::sync::watch;
-use tracing::{error, info};
 use zbus::connection::Builder;
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with_target(false)
-        .without_time()
-        .init();
-
     match run().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            error!(error = %error, "broker stopped");
+            eprintln!("sud0-broker: {error}");
             ExitCode::FAILURE
         }
     }
@@ -46,10 +36,8 @@ async fn run() -> Result<(), BrokerError> {
         .await?;
     connection.request_name(BROKER_BUS_NAME).await?;
 
-    info!("broker ready");
     wait_for_shutdown().await?;
     let _ = shutdown_tx.send(true);
-    info!("broker shutting down");
     Ok(())
 }
 

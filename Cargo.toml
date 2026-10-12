@@ -40,8 +40,6 @@ rustix = { version = "1.1.5", features = ["termios"] }
 serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2.0.21"
 tokio = { version = "1.53.2", features = ["macros", "rt-multi-thread", "signal", "io-util", "process", "time", "sync"] }
-tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 zbus = { version = "5.19.0", features = ["tokio"] }
 
 [dev-dependencies]
