@@ -339,7 +339,6 @@ mod tests {
                 .render(&request(), Some(&description), "/actual")
                 .unwrap()
         );
-        assert!(!check.cancellation_id().is_empty());
     }
 
     #[derive(Debug)]

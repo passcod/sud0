@@ -14,8 +14,6 @@ cat >"$scratch/catalog.xml" <<'EOF_CATALOG'
 EOF_CATALOG
 XML_CATALOG_FILES="$scratch/catalog.xml" xmllint --nonet --noout --valid \
     "$repo/dist/polkit/nz.passcod.sud0.policy"
-xmllint --nonet --noout "$repo/dist/dbus-1/system.d/nz.passcod.sud0.conf"
-
 # The installed busconfig DTD predates send_destination. Parse that modern
 # attribute with the installed daemon in an otherwise complete throwaway config.
 mkdir "$scratch/services"

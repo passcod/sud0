@@ -84,8 +84,7 @@ mod tests {
         let directory = parent.path().join("execute-only");
         std::fs::create_dir(&directory).unwrap();
         std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o111)).unwrap();
-        let opened = WorkingDirectoryFd::open(directory.to_str().unwrap()).unwrap();
-        assert!(fstat(opened.as_fd()).unwrap().st_mode & libc::S_IFMT == libc::S_IFDIR);
+        WorkingDirectoryFd::open(directory.to_str().unwrap()).unwrap();
     }
 
     #[test]

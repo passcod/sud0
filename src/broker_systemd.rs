@@ -248,8 +248,7 @@ impl SystemdLauncher {
         let startup_result = loop {
             tokio::select! {
                 biased;
-                changed = cancellation.changed() => {
-                    let _ = changed;
+                _ = cancellation.changed() => {
                     match manager.stop_unit(&unit_name, "replace").await {
                         Ok(_) => break Err(LaunchError::Cancelled),
                         Err(error) => break Err(LaunchError::Systemd(error)),
@@ -388,8 +387,7 @@ async fn track_completion_inner(
         }
 
         tokio::select! {
-            changed = cancellation.changed(), if !stop_requested => {
-                let _ = changed;
+            _ = cancellation.changed(), if !stop_requested => {
                 stop_requested = true;
                 manager
                     .stop_unit(unit_name, "replace")

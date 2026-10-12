@@ -31,9 +31,6 @@ check: ensure-unprivileged
 	./scripts/check-dist.sh
 
 install: ensure-prefix
-	@test -x target/release/sud0 || { echo 'target/release/sud0 is missing; run make release as an unprivileged user first' >&2; exit 1; }
-	@test -x target/release/sud0-broker || { echo 'target/release/sud0-broker is missing; run make release as an unprivileged user first' >&2; exit 1; }
-	@test -x target/release/sud0-exec || { echo 'target/release/sud0-exec is missing; run make release as an unprivileged user first' >&2; exit 1; }
 	$(INSTALL) -Dm755 target/release/sud0 "$(BINDIR)/sud0"
 	$(INSTALL) -Dm755 target/release/sud0-broker "$(LIBEXECDIR)/sud0-broker"
 	$(INSTALL) -Dm755 target/release/sud0-exec "$(LIBEXECDIR)/sud0-exec"
