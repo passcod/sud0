@@ -112,7 +112,6 @@ impl InvocationStatusWire {
 struct InvocationState {
     status: InvocationStatusWire,
     pty_master: Option<OwnedFd>,
-    released: bool,
 }
 
 #[derive(Debug)]
@@ -121,7 +120,6 @@ struct SharedInvocation {
     cancellation: Cancellation,
     state: Mutex<InvocationState>,
     changed: Notify,
-    terminal: Notify,
     owner_monitor: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
@@ -133,10 +131,8 @@ impl SharedInvocation {
             state: Mutex::new(InvocationState {
                 status: InvocationStatusWire::authorizing(),
                 pty_master: None,
-                released: false,
             }),
             changed: Notify::new(),
-            terminal: Notify::new(),
             owner_monitor: Mutex::new(None),
         }
     }
@@ -154,28 +150,14 @@ impl SharedInvocation {
     }
 
     fn update(&self, status: InvocationStatusWire) {
-        let terminal = status.is_terminal();
         self.state.lock().unwrap().status = status;
         self.changed.notify_waiters();
-        if terminal {
-            self.terminal.notify_waiters();
-        }
     }
 
     async fn wait_until_terminal(&self) {
         loop {
-            let notified = self.terminal.notified();
-            if self.state.lock().unwrap().status.is_terminal() {
-                return;
-            }
-            notified.await;
-        }
-    }
-
-    async fn wait_until_released(&self) {
-        loop {
             let notified = self.changed.notified();
-            if self.state.lock().unwrap().released {
+            if self.state.lock().unwrap().status.is_terminal() {
                 return;
             }
             notified.await;
@@ -201,7 +183,6 @@ impl SharedInvocation {
         self.cancellation.cancel(CancellationReason::OwnerLost);
         let mut state = self.state.lock().unwrap();
         state.pty_master = None;
-        state.released = true;
         drop(state);
         self.changed.notify_waiters();
     }
@@ -258,10 +239,7 @@ async fn remove_invocation(
         .await;
     shared.stop_owner_monitor();
     shared.cancellation.cancel(CancellationReason::Caller);
-    let mut state = shared.state.lock().unwrap();
-    state.pty_master = None;
-    state.released = true;
-    drop(state);
+    shared.state.lock().unwrap().pty_master = None;
     shared.changed.notify_waiters();
 }
 
@@ -284,7 +262,6 @@ impl InvocationObject {
             let notified = self.shared.changed.notified();
             let status = self.shared.state.lock().unwrap().status.clone();
             if status.is_terminal() {
-                self.shared.state.lock().unwrap().released = true;
                 self.schedule_removal();
                 return Ok(status);
             }
@@ -448,12 +425,7 @@ impl BrokerManager {
             path.clone(),
         );
         shared.install_owner_monitor(owner_monitor);
-        spawn_invocation_expiry(
-            self.connection.clone(),
-            path.clone(),
-            shared.clone(),
-            permit,
-        );
+        spawn_invocation_expiry(self.connection.clone(), path.clone(), shared.clone());
         let connection = self.connection.clone();
         let launcher = self.launcher.clone();
         let prompt_template = self.prompt_template.clone();
@@ -797,17 +769,11 @@ fn spawn_invocation_expiry(
     connection: Connection,
     path: OwnedObjectPath,
     shared: Arc<SharedInvocation>,
-    permit: Arc<InvocationPermit>,
 ) {
     tokio::spawn(async move {
         shared.wait_until_terminal().await;
-        tokio::select! {
-            () = shared.wait_until_released() => {}
-            () = tokio::time::sleep(INVOCATION_EXPIRY) => {
-                remove_invocation(&connection, path, &shared).await;
-            }
-        }
-        drop(permit);
+        tokio::time::sleep(INVOCATION_EXPIRY).await;
+        remove_invocation(&connection, path, &shared).await;
     });
 }
 
@@ -882,15 +848,13 @@ mod tests {
     }
 
     #[test]
-    fn owner_loss_cancels_and_releases_descriptor_state() {
+    fn owner_loss_cancels_and_drops_descriptor_state() {
         let cancellation = Cancellation::new();
         let shared = SharedInvocation::new(":1.7".to_owned(), cancellation.clone());
         shared.install_pty(std::fs::File::open("/dev/null").unwrap().into());
         shared.owner_lost();
         assert_eq!(cancellation.reason(), Some(CancellationReason::OwnerLost));
-        let state = shared.state.lock().unwrap();
-        assert!(state.released);
-        assert!(state.pty_master.is_none());
+        assert!(shared.state.lock().unwrap().pty_master.is_none());
     }
 
     #[test]
