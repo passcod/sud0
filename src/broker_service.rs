@@ -571,7 +571,7 @@ async fn run_pipeline(pipeline: RunPipeline) {
     };
     match outcome {
         AuthorizationOutcome::Authorized => {}
-        AuthorizationOutcome::Denied | AuthorizationOutcome::Dismissed => {
+        AuthorizationOutcome::Denied => {
             shared.update(InvocationStatusWire::terminal_phase(PHASE_DENIED, "denied"));
             return;
         }

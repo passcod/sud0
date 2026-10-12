@@ -159,7 +159,6 @@ impl Cancellation {
 pub enum AuthorizationOutcome {
     Authorized,
     Denied,
-    Dismissed,
     Cancelled(CancellationReason),
 }
 
@@ -168,18 +167,12 @@ pub(crate) trait Authority {
         &self,
         caller: &CallerIdentity,
         request: &AuthorizationRequest,
-    ) -> impl Future<Output = Result<PolicyKitResult, AuthorizationError>> + Send;
+    ) -> impl Future<Output = Result<bool, AuthorizationError>> + Send;
 
     fn cancel(
         &self,
         cancellation_id: &str,
     ) -> impl Future<Output = Result<(), AuthorizationError>> + Send;
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PolicyKitResult {
-    authorized: bool,
-    dismissed: bool,
 }
 
 /// Authorizes one request and gives explicit cancellation precedence over a racing completion.
@@ -215,13 +208,11 @@ pub(crate) async fn authorize<A: Authority>(
                 let _ = authority.cancel(request.cancellation_id()).await;
                 return Ok(AuthorizationOutcome::Cancelled(reason));
             }
-            if result.dismissed {
-                Ok(AuthorizationOutcome::Dismissed)
-            } else if result.authorized {
-                Ok(AuthorizationOutcome::Authorized)
+            Ok(if result {
+                AuthorizationOutcome::Authorized
             } else {
-                Ok(AuthorizationOutcome::Denied)
-            }
+                AuthorizationOutcome::Denied
+            })
         }
     }
 }
@@ -242,7 +233,7 @@ impl Authority for ZbusAuthority {
         &self,
         caller: &CallerIdentity,
         request: &AuthorizationRequest,
-    ) -> Result<PolicyKitResult, AuthorizationError> {
+    ) -> Result<bool, AuthorizationError> {
         let proxy = PolicyKitAuthorityProxy::new(&self.connection)
             .await
             .map_err(AuthorizationError::PolicyKit)?;
@@ -266,12 +257,10 @@ impl Authority for ZbusAuthority {
             )
             .await
             .map_err(AuthorizationError::PolicyKit)?;
-        Ok(PolicyKitResult {
-            authorized,
-            dismissed: result_details
-                .get("polkit.dismissed")
-                .is_some_and(|value| !value.is_empty()),
-        })
+        let dismissed = result_details
+            .get("polkit.dismissed")
+            .is_some_and(|value| !value.is_empty());
+        Ok(authorized && !dismissed)
     }
 
     async fn cancel(&self, cancellation_id: &str) -> Result<(), AuthorizationError> {
@@ -370,7 +359,7 @@ mod tests {
 
     #[derive(Debug)]
     struct FakeAuthority {
-        result: PolicyKitResult,
+        result: bool,
         release: Arc<Notify>,
         calls: Arc<Mutex<Vec<String>>>,
     }
@@ -380,13 +369,13 @@ mod tests {
             &self,
             _caller: &CallerIdentity,
             request: &AuthorizationRequest,
-        ) -> Result<PolicyKitResult, AuthorizationError> {
+        ) -> Result<bool, AuthorizationError> {
             self.calls
                 .lock()
                 .unwrap()
                 .push(format!("check:{}", request.cancellation_id()));
             self.release.notified().await;
-            Ok(self.result.clone())
+            Ok(self.result)
         }
 
         async fn cancel(&self, cancellation_id: &str) -> Result<(), AuthorizationError> {
@@ -403,10 +392,7 @@ mod tests {
         let release = Arc::new(Notify::new());
         let calls = Arc::new(Mutex::new(Vec::new()));
         let authority = FakeAuthority {
-            result: PolicyKitResult {
-                authorized: true,
-                dismissed: false,
-            },
+            result: true,
             release,
             calls: calls.clone(),
         };
@@ -435,10 +421,7 @@ mod tests {
     async fn cancellation_wins_a_ready_authorization_race() {
         let release = Arc::new(Notify::new());
         let authority = FakeAuthority {
-            result: PolicyKitResult {
-                authorized: true,
-                dismissed: false,
-            },
+            result: true,
             release: release.clone(),
             calls: Arc::new(Mutex::new(Vec::new())),
         };
@@ -463,27 +446,8 @@ mod tests {
     #[tokio::test]
     async fn only_authorized_boolean_permits_authorized_outcome() {
         for (result, expected) in [
-            (
-                PolicyKitResult {
-                    authorized: true,
-                    dismissed: false,
-                },
-                AuthorizationOutcome::Authorized,
-            ),
-            (
-                PolicyKitResult {
-                    authorized: false,
-                    dismissed: false,
-                },
-                AuthorizationOutcome::Denied,
-            ),
-            (
-                PolicyKitResult {
-                    authorized: true,
-                    dismissed: true,
-                },
-                AuthorizationOutcome::Dismissed,
-            ),
+            (true, AuthorizationOutcome::Authorized),
+            (false, AuthorizationOutcome::Denied),
         ] {
             let release = Arc::new(Notify::new());
             release.notify_one();
