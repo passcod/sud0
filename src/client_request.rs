@@ -101,6 +101,10 @@ fn prepare_working_directory(
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+    use std::process::Command;
+
     use super::*;
 
     #[test]
@@ -116,6 +120,25 @@ mod tests {
             parse_environment(std::slice::from_ref(&name)),
             Err(ClientRequestError::MissingEnvironment { .. })
         ));
+
+        if env::var_os("SUD0_TEST_NON_UTF8").is_some() {
+            assert!(matches!(
+                parse_environment(&["SUD0_TEST_NON_UTF8".to_owned()]),
+                Err(ClientRequestError::NonUtf8Environment { .. })
+            ));
+        } else {
+            let status = Command::new(std::env::current_exe().unwrap())
+                .arg("--exact")
+                .arg("client_request::tests::environment_splits_first_equals_and_reports_missing_import")
+                .arg("--nocapture")
+                .env(
+                    "SUD0_TEST_NON_UTF8",
+                    OsString::from_vec(vec![b'v', 0xff]),
+                )
+                .status()
+                .unwrap();
+            assert!(status.success());
+        }
     }
 
     #[test]
