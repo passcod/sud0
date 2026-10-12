@@ -15,9 +15,7 @@ pub const ACTIVATION_FD_COUNT: u32 = 2;
 
 /// Fixed root command search path; ambient `PATH` is never consulted.
 pub const ROOT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/bin";
-/// Absolute components of [`ROOT_PATH`], in search order.
-pub const ROOT_PATH_COMPONENTS: &[&[u8]] = &[b"/usr/local/sbin", b"/usr/local/bin", b"/usr/bin"];
-/// Fixed shell used for no-command requests and the root `SHELL` environment value.
+/// Fixed root `SHELL` environment value.
 pub const ROOT_SHELL: &str = "/bin/bash";
 /// Installed executor path used by transient services.
 pub const EXECUTOR_PATH: &str = "/usr/lib/sud0/sud0-exec";
@@ -64,8 +62,6 @@ pub const MAX_DESCRIPTION_DISPLAY_BYTES: usize = 1024;
 pub const MAX_COMMAND_DISPLAY_BYTES: usize = 1024;
 /// Maximum rendered byte length of the broker-derived working-directory path.
 pub const MAX_CWD_DISPLAY_BYTES: usize = 512;
-/// Maximum rendered byte length of the explicit environment summary.
-pub const MAX_ENVIRONMENT_DISPLAY_BYTES: usize = 512;
 /// Maximum UTF-8 byte length of the root-owned prompt template.
 pub const MAX_PROMPT_TEMPLATE_BYTES: usize = 4096;
 /// Maximum rendered prompt size after placeholder expansion.

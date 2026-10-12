@@ -43,10 +43,6 @@ pub enum RequestError {
         actual: usize,
         maximum: usize,
     },
-    #[error("exactly one of PTY mode and pipe mode must be selected")]
-    InvalidIoMode,
-    #[error("request contains unknown option bits 0x{bits:02x}")]
-    UnknownOptionBits { bits: u8 },
     #[error("request data has {actual} bytes; the maximum is {maximum}")]
     RequestTooLarge { actual: usize, maximum: usize },
 }

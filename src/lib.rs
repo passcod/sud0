@@ -32,6 +32,6 @@ pub use broker_systemd::{
 pub use broker_wire::{PrepareError, PreparedIo, PreparedRequest, RunWire, StdioWire, WindowSize};
 pub use cwd::{WorkingDirectoryError, WorkingDirectoryFd};
 pub use error::{DescriptionError, ProtocolError, RequestError};
-pub use prompt::{HumanDescription, PromptTemplate, PromptTemplateError, format_command};
+pub use prompt::{HumanDescription, PromptTemplate, PromptTemplateError};
 pub use request::{FrozenRequest, IoMode};
 pub use sealed_request::{SealedRequestError, SealedRequestFd, decode_sealed_request};

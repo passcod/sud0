@@ -101,7 +101,7 @@ impl PromptTemplate {
 }
 
 /// Formats argv as a bounded, non-shell human-readable sequence.
-pub fn format_command(request: &FrozenRequest) -> Result<String, PromptTemplateError> {
+fn format_command(request: &FrozenRequest) -> Result<String, PromptTemplateError> {
     let mut display = String::from("[");
     for (index, argument) in request.argv().iter().enumerate() {
         if index != 0 {

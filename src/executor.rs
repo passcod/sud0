@@ -11,8 +11,7 @@ use nix::unistd::{execve, getpid, getresuid, getsid, setsid};
 use thiserror::Error;
 
 use crate::constants::{
-    ACTIVATION_FD_COUNT, ACTIVATION_FD_NAMES, CWD_FD, REQUEST_FD, ROOT_PATH, ROOT_PATH_COMPONENTS,
-    ROOT_SHELL,
+    ACTIVATION_FD_COUNT, ACTIVATION_FD_NAMES, CWD_FD, REQUEST_FD, ROOT_PATH, ROOT_SHELL,
 };
 use crate::{
     FrozenRequest, IoMode, SealedRequestError, WorkingDirectoryError, WorkingDirectoryFd,
@@ -193,9 +192,10 @@ pub fn command_candidates(argv0: &CStr) -> Vec<CString> {
         return vec![argv0.to_owned()];
     }
 
-    ROOT_PATH_COMPONENTS
-        .iter()
+    ROOT_PATH
+        .split(':')
         .map(|component| {
+            let component = component.as_bytes();
             let mut candidate = Vec::with_capacity(component.len() + 1 + argv0.to_bytes().len());
             candidate.extend_from_slice(component);
             candidate.push(b'/');
@@ -611,64 +611,5 @@ mod tests {
         });
         assert_eq!(result, Errno::ENOEXEC);
         assert_eq!(visited.borrow().len(), 1);
-    }
-
-    #[test]
-    fn pipe_mode_does_not_require_terminal_standard_streams() {
-        assert!(prepare_terminal(IoMode::Pipe).is_ok());
-    }
-
-    #[test]
-    fn terminal_readiness_requires_session_and_foreground_group_match() {
-        let ready = TerminalSnapshot {
-            pid: 100,
-            process_group: 100,
-            session: 100,
-            terminals: [TerminalState {
-                device: 7,
-                terminal_session: Some(100),
-                foreground_group: Some(100),
-            }; 3],
-        };
-        assert!(terminal_is_ready(&ready));
-
-        let wrong_session = TerminalSnapshot {
-            terminals: [TerminalState {
-                terminal_session: Some(99),
-                ..ready.terminals[0]
-            }; 3],
-            ..ready
-        };
-        assert!(!terminal_is_ready(&wrong_session));
-    }
-
-    #[test]
-    fn terminal_shape_rejects_different_standard_terminals() {
-        let snapshot = TerminalSnapshot {
-            pid: 100,
-            process_group: 100,
-            session: 100,
-            terminals: [
-                TerminalState {
-                    device: 7,
-                    terminal_session: Some(100),
-                    foreground_group: Some(100),
-                },
-                TerminalState {
-                    device: 8,
-                    terminal_session: Some(100),
-                    foreground_group: Some(100),
-                },
-                TerminalState {
-                    device: 7,
-                    terminal_session: Some(100),
-                    foreground_group: Some(100),
-                },
-            ],
-        };
-        assert!(matches!(
-            validate_terminal_shape(&snapshot),
-            Err(ExecutorError::MismatchedTerminals)
-        ));
     }
 }

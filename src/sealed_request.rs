@@ -53,11 +53,6 @@ impl SealedRequestFd {
         Ok(Self { file })
     }
 
-    /// Borrows the sealed descriptor for transfer to another process.
-    pub fn as_fd(&self) -> BorrowedFd<'_> {
-        self.file.as_fd()
-    }
-
     /// Transfers ownership while retaining the kernel-enforced seals.
     pub fn into_owned_fd(self) -> OwnedFd {
         self.file.into()

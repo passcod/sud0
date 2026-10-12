@@ -26,11 +26,6 @@ impl WorkingDirectoryFd {
         Self::try_from(fd)
     }
 
-    /// Borrows the directory descriptor for transfer to another process.
-    pub fn as_fd(&self) -> BorrowedFd<'_> {
-        self.fd.as_fd()
-    }
-
     /// Returns the kernel's current UTF-8 pathname for this exact opened directory object.
     pub fn display_path(&self) -> Result<String, WorkingDirectoryError> {
         let link = format!("/proc/self/fd/{}", self.fd.as_raw_fd());

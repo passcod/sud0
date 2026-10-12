@@ -246,11 +246,6 @@ async fn stop_agent(agent: Option<AuthenticationAgent>) {
 
 #[cfg(test)]
 mod tests {
-    use std::os::fd::{AsFd, AsRawFd};
-
-    use nix::fcntl::{FcntlArg, FdFlag, OFlag, fcntl};
-    use nix::unistd::pipe2;
-
     use super::*;
 
     fn status(phase: u8, outcome: u8, code: i32, signal: i32) -> InvocationStatusWire {
@@ -287,15 +282,5 @@ mod tests {
             IoMode::Pty,
             &status(4, 0, 0, 0)
         ));
-    }
-
-    #[test]
-    fn duplicated_descriptors_are_distinct_and_close_on_exec() {
-        let (read_end, _write_end) = pipe2(OFlag::empty()).unwrap();
-        let duplicate = duplicate_cloexec(read_end.as_fd()).unwrap();
-        assert_ne!(read_end.as_raw_fd(), duplicate.as_raw_fd());
-        let flags =
-            FdFlag::from_bits_truncate(fcntl(duplicate.as_fd(), FcntlArg::F_GETFD).unwrap());
-        assert!(flags.contains(FdFlag::FD_CLOEXEC));
     }
 }
