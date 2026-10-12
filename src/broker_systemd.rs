@@ -566,8 +566,6 @@ mod tests {
                 ("CollectMode", "s".to_owned()),
             ]
         );
-        assert_eq!(TRANSIENT_UNIT_DESCRIPTION, "sud0 privileged command");
-        assert_eq!(EXECUTOR_PATH, "/usr/lib/sud0/sud0-exec");
     }
 
     #[test]

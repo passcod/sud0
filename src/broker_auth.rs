@@ -303,20 +303,8 @@ mod tests {
     }
 
     #[test]
-    fn run_request_has_exact_broker_derived_policy_fields() {
-        let description = HumanDescription::new("disk maintenance").unwrap();
-        let template =
-            PromptTemplate::parse("{description_line}|{command}|{cwd}".to_owned()).unwrap();
-        let check = AuthorizationRequest::for_run(
-            &template,
-            &request(),
-            Some(&description),
-            "/actual",
-            true,
-        )
-        .unwrap();
-
-        assert_eq!(check.flags, 1);
+    fn run_request_uses_interaction_flag() {
+        assert_eq!(authorization(true).flags, 1);
         assert_eq!(authorization(false).flags, 0);
     }
 
