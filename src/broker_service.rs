@@ -438,7 +438,6 @@ impl BrokerManager {
         wire: RunWire,
         #[zbus(header)] header: Header<'_>,
     ) -> Result<OwnedObjectPath, BrokerDbusError> {
-        let pipeline_permit = self.pipelines.acquire()?;
         let caller = authenticated_caller(&self.connection, &header).await?;
         let permit = self.limits.acquire_invocation(caller.sender())?;
         let prepared = PreparedRequest::from_wire(wire)
@@ -446,6 +445,7 @@ impl BrokerManager {
         let cancellation = Cancellation::new();
         let owner_changes = owner_change_stream(&self.connection, caller.sender()).await?;
         let path = random_invocation_path()?;
+        let pipeline_permit = self.pipelines.acquire()?;
         let shared = Arc::new(SharedInvocation::new(
             caller.sender().to_owned(),
             cancellation.clone(),
