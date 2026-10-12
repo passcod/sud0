@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io;
-use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
+use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::fs::FileExt;
 
 use nix::fcntl::{FcntlArg, SealFlag, fcntl};
@@ -43,11 +43,6 @@ impl SealedRequestFd {
             .map_err(SealedRequestError::Write)?;
         fcntl(&file, FcntlArg::F_ADD_SEALS(REQUIRED_SEALS)).map_err(SealedRequestError::Seal)?;
         Ok(Self { file })
-    }
-
-    /// Transfers ownership while retaining the kernel-enforced seals.
-    pub fn into_owned_fd(self) -> OwnedFd {
-        self.file.into()
     }
 }
 
@@ -161,7 +156,7 @@ mod tests {
     fn creates_permanently_sealed_round_trip_request() {
         let request = request();
         let sealed = SealedRequestFd::create(&request).unwrap();
-        let file = File::from(sealed.into_owned_fd());
+        let file = sealed.file;
 
         assert_eq!(decode_sealed_request(&file).unwrap(), request);
         let seals = get_seals(&file).unwrap();
@@ -215,7 +210,7 @@ mod tests {
     fn reads_from_offset_zero_without_changing_or_trusting_cursor() {
         let request = request();
         let sealed = SealedRequestFd::create(&request).unwrap();
-        let mut file = File::from(sealed.into_owned_fd());
+        let mut file = sealed.file;
         file.seek(io::SeekFrom::End(0)).unwrap();
 
         assert_eq!(decode_sealed_request(&file).unwrap(), request);
