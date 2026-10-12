@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 /// A request violates a structural or resource limit.
-#[derive(Debug, PartialEq, Eq, Error)]
+#[derive(Debug, PartialEq, Error)]
 pub enum RequestError {
     #[error("a request must contain at least one command argument")]
     EmptyArgv,

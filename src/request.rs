@@ -10,7 +10,7 @@ use crate::constants::{
 use crate::error::RequestError;
 
 /// How standard streams are connected to the command.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum IoMode {
     Pty,
     Pipe,
@@ -19,7 +19,7 @@ pub enum IoMode {
 /// An immutable, validated execution request.
 ///
 /// Presentation-only data and the descriptor-backed working directory are deliberately absent.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct FrozenRequest {
     argv: Vec<String>,
     environment: Vec<(String, String)>,
