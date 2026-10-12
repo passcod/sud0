@@ -290,9 +290,7 @@ async fn remove_invocation(
         .remove::<InvocationObject, _>(path)
         .await;
     shared.stop_owner_monitor();
-    shared.cancellation.cancel(CancellationReason::Caller);
     shared.state.lock().unwrap().pty_master = None;
-    shared.changed.notify_waiters();
 }
 
 #[interface(name = "nz.passcod.sud0.Invocation1")]
@@ -471,6 +469,7 @@ impl BrokerManager {
         let prompt_template = self.prompt_template.clone();
         let shutdown = self.shutdown.clone();
         tokio::spawn(async move {
+            let _pipeline_permit = pipeline_permit;
             run_pipeline(RunPipeline {
                 connection,
                 launcher,
@@ -480,7 +479,6 @@ impl BrokerManager {
                 shared,
                 cancellation,
                 shutdown,
-                _permit: pipeline_permit,
             })
             .await;
         });
@@ -497,7 +495,6 @@ struct RunPipeline {
     shared: Arc<SharedInvocation>,
     cancellation: Cancellation,
     shutdown: watch::Receiver<bool>,
-    _permit: PipelinePermit,
 }
 
 async fn run_pipeline(pipeline: RunPipeline) {
@@ -510,11 +507,10 @@ async fn run_pipeline(pipeline: RunPipeline) {
         shared,
         cancellation,
         mut shutdown,
-        _permit,
     } = pipeline;
     let shutdown_cancellation = cancellation.clone();
     let _shutdown_monitor = AbortOnDrop(tokio::spawn(async move {
-        if *shutdown.borrow() || shutdown.changed().await.is_ok() && *shutdown.borrow() {
+        if shutdown.wait_for(|value| *value).await.is_ok() {
             shutdown_cancellation.cancel(CancellationReason::Shutdown);
         }
     }));
