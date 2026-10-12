@@ -290,7 +290,7 @@ struct TerminalSnapshot {
     terminals: [TerminalState; 3],
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 struct TerminalState {
     device: libc::dev_t,
     terminal_session: Option<libc::pid_t>,
@@ -348,7 +348,6 @@ fn terminal_state(fd: RawFd) -> Result<TerminalState, ExecutorError> {
     })
 }
 
-#[derive(Clone, Copy)]
 enum TerminalQuery {
     Session,
     ForegroundGroup,
@@ -399,7 +398,7 @@ fn terminal_is_ready(snapshot: &TerminalSnapshot) -> bool {
 }
 
 /// A malformed systemd descriptor-activation environment.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum ActivationError {
     #[error("LISTEN_PID is missing")]
     MissingListenPid,
