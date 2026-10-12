@@ -149,10 +149,7 @@ pub(crate) trait Authority {
         request: &AuthorizationRequest,
     ) -> impl Future<Output = Result<bool, AuthorizationError>> + Send;
 
-    fn cancel(
-        &self,
-        cancellation_id: &str,
-    ) -> impl Future<Output = Result<(), AuthorizationError>> + Send;
+    fn cancel(&self, cancellation_id: &str);
 }
 
 /// Authorizes one request and gives explicit cancellation precedence over a racing completion.
@@ -174,13 +171,13 @@ pub(crate) async fn authorize<A: Authority>(
         _ = cancellation.changed() => {
             // The result can legitimately report that the check has just completed. Cancellation
             // still wins locally and no authorization result from this check may permit launch.
-            let _ = authority.cancel(&request.cancellation_id).await;
+            authority.cancel(&request.cancellation_id);
             Ok(AuthorizationOutcome::Cancelled)
         }
         result = &mut check => {
             let result = result?;
             if cancellation.borrow().is_some() {
-                let _ = authority.cancel(&request.cancellation_id).await;
+                authority.cancel(&request.cancellation_id);
                 return Ok(AuthorizationOutcome::Cancelled);
             }
             Ok(if result {
@@ -227,14 +224,14 @@ impl Authority for zbus::Connection {
         Ok(authorized && !dismissed)
     }
 
-    async fn cancel(&self, cancellation_id: &str) -> Result<(), AuthorizationError> {
-        let proxy = PolicyKitAuthorityProxy::new(self)
-            .await
-            .map_err(AuthorizationError::PolicyKit)?;
-        proxy
-            .cancel_check_authorization(cancellation_id)
-            .await
-            .map_err(AuthorizationError::PolicyKit)
+    fn cancel(&self, cancellation_id: &str) {
+        let connection = self.clone();
+        let cancellation_id = cancellation_id.to_owned();
+        tokio::spawn(async move {
+            if let Ok(proxy) = PolicyKitAuthorityProxy::new(&connection).await {
+                let _ = proxy.cancel_check_authorization(&cancellation_id).await;
+            }
+        });
     }
 }
 
@@ -333,12 +330,11 @@ mod tests {
             Ok(self.result)
         }
 
-        async fn cancel(&self, cancellation_id: &str) -> Result<(), AuthorizationError> {
+        fn cancel(&self, cancellation_id: &str) {
             self.calls
                 .lock()
                 .unwrap()
                 .push(format!("cancel:{cancellation_id}"));
-            Ok(())
         }
     }
 
