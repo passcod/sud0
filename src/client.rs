@@ -68,23 +68,6 @@ impl BrokerClient {
         Ok(Self { connection })
     }
 
-    pub async fn validate(&self, allow_interaction: bool) -> Result<bool, ClientError> {
-        let mut agent = start_agent(allow_interaction).await;
-        let result = match ManagerProxy::new(&self.connection).await {
-            Ok(proxy) => proxy
-                .validate(allow_interaction)
-                .await
-                .map_err(ClientError::Broker),
-            Err(error) => Err(ClientError::Proxy(error)),
-        };
-        stop_agent(agent.agent.take()).await;
-        match (result, agent.error) {
-            (Ok(true), _) => Ok(true),
-            (Ok(false), Some(error)) => Err(ClientError::AuthenticationAgent(error)),
-            (result, _) => result,
-        }
-    }
-
     pub async fn run(
         &self,
         prepared: PreparedClientRequest,

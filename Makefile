@@ -43,13 +43,10 @@ install: ensure-prefix
 	$(INSTALL) -Dm644 dist/dbus-1/system.d/nz.passcod.sud0.conf "$(DATADIR)/dbus-1/system.d/nz.passcod.sud0.conf"
 	$(INSTALL) -Dm644 dist/dbus-1/system-services/nz.passcod.sud0.service "$(DATADIR)/dbus-1/system-services/nz.passcod.sud0.service"
 	$(INSTALL) -Dm644 dist/systemd/system/sud0-broker.service "$(SYSTEMDUNITDIR)/sud0-broker.service"
-	$(INSTALL) -Dm644 docs/sud0.1 "$(DATADIR)/man/man1/sud0.1"
 	$(INSTALL) -Dm644 LICENSE-MIT "$(DATADIR)/licenses/sud0/LICENSE-MIT"
 	$(INSTALL) -Dm644 LICENSE-APACHE "$(DATADIR)/licenses/sud0/LICENSE-APACHE"
 	$(INSTALL) -Dm644 README.md "$(DATADIR)/doc/sud0/README.md"
 	$(INSTALL) -Dm644 SECURITY.md "$(DATADIR)/doc/sud0/SECURITY.md"
-	$(INSTALL) -Dm644 docs/dbus-api.md "$(DATADIR)/doc/sud0/dbus-api.md"
-	$(INSTALL) -Dm644 docs/dbus-api.xml "$(DATADIR)/doc/sud0/dbus-api.xml"
 
 uninstall: ensure-prefix
 	rm -f -- "$(BINDIR)/sud0"
@@ -59,8 +56,6 @@ uninstall: ensure-prefix
 	rm -f -- "$(DATADIR)/dbus-1/system.d/nz.passcod.sud0.conf"
 	rm -f -- "$(DATADIR)/dbus-1/system-services/nz.passcod.sud0.service"
 	rm -f -- "$(SYSTEMDUNITDIR)/sud0-broker.service"
-	rm -f -- "$(DATADIR)/man/man1/sud0.1"
 	rm -f -- "$(DATADIR)/licenses/sud0/LICENSE-MIT" "$(DATADIR)/licenses/sud0/LICENSE-APACHE"
 	rm -f -- "$(DATADIR)/doc/sud0/README.md" "$(DATADIR)/doc/sud0/SECURITY.md"
-	rm -f -- "$(DATADIR)/doc/sud0/dbus-api.md" "$(DATADIR)/doc/sud0/dbus-api.xml"
 	rmdir --ignore-fail-on-non-empty -- "$(DESTDIR)/etc/sud0" $(LIBEXECDIR) "$(DATADIR)/licenses/sud0" "$(DATADIR)/doc/sud0" 2>/dev/null || true

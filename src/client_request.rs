@@ -138,7 +138,6 @@ mod tests {
             pty: false,
             pipe: false,
             non_interactive: false,
-            validate: false,
             command: vec!["id".to_owned()],
         };
         assert!(matches!(

@@ -14,11 +14,8 @@ expected=$(cat <<'FILES'
 644 usr/share/dbus-1/system.d/nz.passcod.sud0.conf
 644 usr/share/doc/sud0/README.md
 644 usr/share/doc/sud0/SECURITY.md
-644 usr/share/doc/sud0/dbus-api.md
-644 usr/share/doc/sud0/dbus-api.xml
 644 usr/share/licenses/sud0/LICENSE-APACHE
 644 usr/share/licenses/sud0/LICENSE-MIT
-644 usr/share/man/man1/sud0.1
 644 usr/share/polkit-1/actions/nz.passcod.sud0.policy
 755 usr/bin/sud0
 755 usr/lib/sud0/sud0-broker

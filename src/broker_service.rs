@@ -29,8 +29,6 @@ const PHASE_DENIED: u8 = 6;
 
 const MAX_GLOBAL_INVOCATIONS: usize = 256;
 const MAX_OWNER_INVOCATIONS: usize = 16;
-const MAX_GLOBAL_VALIDATIONS: usize = 64;
-const MAX_OWNER_VALIDATIONS: usize = 4;
 const INVOCATION_EXPIRY: Duration = Duration::from_secs(60);
 
 const OUTCOME_NONE: u8 = 0;
@@ -366,7 +364,6 @@ impl InvocationObject {
 #[derive(Debug, Default)]
 struct LimitState {
     invocations: HashMap<String, usize>,
-    validations: HashMap<String, usize>,
 }
 
 #[derive(Debug, Default)]
@@ -394,31 +391,8 @@ impl BrokerLimits {
         }))
     }
 
-    fn acquire_validation(
-        self: &Arc<Self>,
-        owner: &str,
-    ) -> Result<ValidationPermit, BrokerDbusError> {
-        let mut state = self.state.lock().unwrap();
-        let global = state.validations.values().sum::<usize>();
-        let owner_count = state.validations.get(owner).copied().unwrap_or_default();
-        if global >= MAX_GLOBAL_VALIDATIONS || owner_count >= MAX_OWNER_VALIDATIONS {
-            return Err(BrokerDbusError::LimitsExceeded(
-                "too many concurrent validations".to_owned(),
-            ));
-        }
-        state.validations.insert(owner.to_owned(), owner_count + 1);
-        Ok(ValidationPermit {
-            owner: owner.to_owned(),
-            limits: self.clone(),
-        })
-    }
-
     fn release_invocation(&self, owner: &str) {
         release_limit(&mut self.state.lock().unwrap().invocations, owner);
-    }
-
-    fn release_validation(&self, owner: &str) {
-        release_limit(&mut self.state.lock().unwrap().validations, owner);
     }
 }
 
@@ -429,18 +403,6 @@ fn release_limit(counts: &mut HashMap<String, usize>, owner: &str) {
     *count -= 1;
     if *count == 0 {
         counts.remove(owner);
-    }
-}
-
-#[derive(Debug)]
-struct ValidationPermit {
-    owner: String,
-    limits: Arc<BrokerLimits>,
-}
-
-impl Drop for ValidationPermit {
-    fn drop(&mut self) {
-        self.limits.release_validation(&self.owner);
     }
 }
 
@@ -534,38 +496,6 @@ impl BrokerManager {
             .await;
         });
         Ok(path)
-    }
-
-    async fn validate(
-        &self,
-        allow_interaction: bool,
-        #[zbus(header)] header: Header<'_>,
-    ) -> Result<bool, BrokerDbusError> {
-        let caller = authenticated_caller(&self.connection, &header).await?;
-        let _permit = self.limits.acquire_validation(caller.sender())?;
-        let cancellation = Cancellation::new();
-        let owner_changes = owner_change_stream(&self.connection, caller.sender()).await?;
-        let _owner_monitor = AbortOnDrop(spawn_validation_owner_monitor(
-            owner_changes,
-            cancellation.clone(),
-        ));
-        let mut shutdown = self.shutdown.clone();
-        let shutdown_cancellation = cancellation.clone();
-        let _shutdown_monitor = AbortOnDrop(tokio::spawn(async move {
-            if shutdown.changed().await.is_ok() && *shutdown.borrow() {
-                shutdown_cancellation.cancel(CancellationReason::Shutdown);
-            }
-        }));
-        let request = AuthorizationRequest::for_validation(&caller, allow_interaction)
-            .map_err(|_| BrokerDbusError::Failed("authorization setup failed".to_owned()))?;
-        let authority = ZbusAuthority::new(self.connection.clone());
-        let outcome = authorize(&authority, &request, cancellation.subscribe())
-            .await
-            .map_err(|_| BrokerDbusError::Failed("authorization failed".to_owned()))?;
-        if outcome != AuthorizationOutcome::Authorized {
-            return Ok(false);
-        }
-        name_has_owner(&self.connection, caller.sender()).await
     }
 }
 
@@ -878,23 +808,6 @@ fn spawn_owner_monitor(
     })
 }
 
-fn spawn_validation_owner_monitor(
-    mut changes: zbus::fdo::NameOwnerChangedStream,
-    cancellation: Cancellation,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        while let Some(signal) = changes.next().await {
-            let Ok(args) = signal.args() else {
-                break;
-            };
-            if args.new_owner().is_none() {
-                break;
-            }
-        }
-        cancellation.cancel(CancellationReason::OwnerLost);
-    })
-}
-
 fn spawn_invocation_expiry(
     connection: Connection,
     path: OwnedObjectPath,
@@ -956,7 +869,6 @@ pub enum BrokerDbusError {
 )]
 pub trait Manager {
     fn run(&self, request: RunWire) -> zbus::Result<OwnedObjectPath>;
-    fn validate(&self, allow_interaction: bool) -> zbus::Result<bool>;
 }
 
 /// Type-only client proxy for owner-bound invocation objects.
@@ -1079,17 +991,6 @@ mod tests {
 
         drop(first_owner.pop());
         assert!(limits.acquire_invocation(":1.7").is_ok());
-
-        let mut validations = Vec::new();
-        for _ in 0..MAX_OWNER_VALIDATIONS {
-            validations.push(limits.acquire_validation(":1.9").unwrap());
-        }
-        assert!(matches!(
-            limits.acquire_validation(":1.9"),
-            Err(BrokerDbusError::LimitsExceeded(_))
-        ));
-        drop(validations.pop());
-        assert!(limits.acquire_validation(":1.9").is_ok());
     }
 
     #[test]

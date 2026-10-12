@@ -110,25 +110,6 @@ impl AuthorizationRequest {
         })
     }
 
-    pub fn for_validation(
-        caller: &CallerIdentity,
-        allow_interaction: bool,
-    ) -> Result<Self, AuthorizationError> {
-        Ok(Self {
-            subject_pid: caller.authorization_process_id,
-            subject_uid: caller.unix_uid,
-            subject_pidfd: caller
-                .authorization_process_fd
-                .as_fd()
-                .try_clone_to_owned()
-                .map_err(AuthorizationError::DuplicatePidfd)?,
-            action_id: POLKIT_RUN_ACTION,
-            message: "Authentication is required to validate sud0 credentials".to_owned(),
-            flags: u32::from(allow_interaction) * POLKIT_ALLOW_USER_INTERACTION,
-            cancellation_id: random_identifier("sud0-auth")?,
-        })
-    }
-
     pub const fn subject_pid(&self) -> u32 {
         self.subject_pid
     }
@@ -371,6 +352,18 @@ mod tests {
         .unwrap()
     }
 
+    fn authorization(allow_interaction: bool) -> AuthorizationRequest {
+        AuthorizationRequest::for_run(
+            &caller(),
+            &PromptTemplate::parse("{command}".to_owned()).unwrap(),
+            &request(),
+            None,
+            "/actual",
+            allow_interaction,
+        )
+        .unwrap()
+    }
+
     #[test]
     fn run_request_has_exact_broker_derived_policy_fields() {
         let description = HumanDescription::new("disk maintenance").unwrap();
@@ -400,22 +393,9 @@ mod tests {
     }
 
     #[test]
-    fn validation_uses_same_action_and_dedicated_prompt() {
-        let check = AuthorizationRequest::for_validation(&caller(), false).unwrap();
-        assert_eq!(check.subject_pid(), std::process::id());
-        assert_eq!(check.subject_uid(), nix::unistd::Uid::effective().as_raw());
-        assert_eq!(check.action_id(), "nz.passcod.sud0.run");
-        assert_eq!(check.flags(), 0);
-        assert_eq!(
-            check.message(),
-            "Authentication is required to validate sud0 credentials"
-        );
-    }
-
-    #[test]
     fn cancellation_identifiers_are_nonempty_and_unique() {
-        let first = AuthorizationRequest::for_validation(&caller(), false).unwrap();
-        let second = AuthorizationRequest::for_validation(&caller(), false).unwrap();
+        let first = authorization(false);
+        let second = authorization(false);
         assert_ne!(first.cancellation_id(), second.cancellation_id());
     }
 
@@ -460,7 +440,7 @@ mod tests {
             release,
             calls: calls.clone(),
         };
-        let request = AuthorizationRequest::for_validation(&caller(), true).unwrap();
+        let request = authorization(true);
         let cancellation = Cancellation::new();
         let future = authorize(&authority, &request, cancellation.subscribe());
         tokio::pin!(future);
@@ -488,7 +468,7 @@ mod tests {
             release: release.clone(),
             calls: Arc::new(Mutex::new(Vec::new())),
         };
-        let request = AuthorizationRequest::for_validation(&caller(), true).unwrap();
+        let request = authorization(true);
         let cancellation = Cancellation::new();
         let future = authorize(&authority, &request, cancellation.subscribe());
         tokio::pin!(future);
@@ -534,7 +514,7 @@ mod tests {
                 release,
                 calls: Arc::new(Mutex::new(Vec::new())),
             };
-            let request = AuthorizationRequest::for_validation(&caller(), false).unwrap();
+            let request = authorization(false);
             let cancellation = Cancellation::new();
             assert_eq!(
                 authorize(&authority, &request, cancellation.subscribe())

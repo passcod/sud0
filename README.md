@@ -25,7 +25,6 @@ Common sudo/run0 options are also available:
 ```console
 $ sud0 -D /var/lib/my-service --pipe /usr/bin/find . -maxdepth 1
 $ sud0 --setenv TERM --pty /usr/bin/bash
-$ sud0 -v
 ```
 
 ## Setup
@@ -49,7 +48,7 @@ $ makepkg -si -D packaging/arch
 
 - `Failed to connect to system bus`: confirm the system D-Bus service is running and the activation and policy files are installed under `/usr/share/dbus-1`.
 - `Failed to register authentication agent`: install polkit and verify `/usr/bin/pkttyagent`; a desktop agent may still satisfy the request.
-- Authorization fails without a prompt under `-n`: run without `-n` or authorize first with `sud0 -v`.
+- Authorization fails without a prompt under `-n`: retry without `-n`.
 - Broker startup or transient-unit failures: inspect `systemctl status sud0-broker.service` and `journalctl -u sud0-broker.service`.
 - A bare command is not found: use an absolute pathname (`PATH` may not be the same under `root`).
 - PTY selection is unsuitable for a pipeline or redirected stream: pass `--pty` or `--pipe` explicitly.

@@ -5,18 +5,15 @@ repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT HUP INT TERM
 
-# Validate policy and introspection XML against the locally installed grammars.
+# Validate the policy against the locally installed grammar.
 cat >"$scratch/catalog.xml" <<'EOF_CATALOG'
 <?xml version="1.0"?>
 <catalog xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog">
   <system systemId="http://www.freedesktop.org/software/polkit/policyconfig-1.dtd" uri="/usr/share/polkit-1/policyconfig-1.dtd"/>
-  <system systemId="http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd" uri="/usr/share/xml/dbus-1/introspect.dtd"/>
 </catalog>
 EOF_CATALOG
 XML_CATALOG_FILES="$scratch/catalog.xml" xmllint --nonet --noout --valid \
     "$repo/dist/polkit/nz.passcod.sud0.policy"
-XML_CATALOG_FILES="$scratch/catalog.xml" xmllint --nonet --noout --valid \
-    "$repo/docs/dbus-api.xml"
 xmllint --nonet --noout "$repo/dist/dbus-1/system.d/nz.passcod.sud0.conf"
 
 # The installed busconfig DTD predates send_destination. Parse that modern

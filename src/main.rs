@@ -49,7 +49,7 @@ enum SignalEvent {
 #[tokio::main]
 async fn main() -> ExitCode {
     let cli = Cli::parse();
-    if cli.command.is_empty() && !cli.validate {
+    if cli.command.is_empty() {
         Cli::command().print_help().expect("failed to print help");
         println!();
         return ExitCode::SUCCESS;
@@ -67,14 +67,6 @@ async fn main() -> ExitCode {
 async fn run(cli: Cli) -> Result<u8, AppError> {
     let allow_interaction = !cli.non_interactive;
     let client = BrokerClient::connect().await?;
-    if cli.validate {
-        return Ok(if client.validate(allow_interaction).await? {
-            0
-        } else {
-            1
-        });
-    }
-
     let tty = stdio_are_ttys();
     let mode = choose_io_mode(cli.pty, cli.pipe, tty);
     let terminal = match mode {

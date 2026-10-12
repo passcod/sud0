@@ -28,14 +28,6 @@ pub struct Cli {
     #[arg(short = 'n', long, visible_alias = "no-ask-password")]
     pub non_interactive: bool,
 
-    /// Validate or refresh authorization without running a command
-    #[arg(
-        short = 'v',
-        long,
-        conflicts_with_all = ["description", "chdir", "setenv", "pty", "pipe", "command"]
-    )]
-    pub validate: bool,
-
     /// Command and arguments to run
     #[arg(value_name = "COMMAND [ARG...]")]
     pub command: Vec<String>,
