@@ -88,7 +88,14 @@ impl BrokerClient {
             allow_interaction,
             window_size: Optional::from(initial_size),
         };
-        let (agent, agent_error) = start_agent(allow_interaction).await;
+        let (agent, agent_error) = if allow_interaction {
+            match AuthenticationAgent::start().await {
+                Ok(agent) => (Some(agent), None),
+                Err(error) => (None, Some(error)),
+            }
+        } else {
+            (None, None)
+        };
         let setup = async {
             let manager = ManagerProxy::new(&self.connection)
                 .await
@@ -142,7 +149,7 @@ fn should_drain_completed_pty(mode: IoMode, status: &InvocationStatusWire) -> bo
 }
 
 impl Invocation {
-    pub async fn wait_for_startup(&self) -> Result<Startup, ClientError> {
+    async fn wait_for_startup(&self) -> Result<Startup, ClientError> {
         loop {
             let status = self.proxy.status().await.map_err(ClientError::Broker)?;
             if status.phase == PHASE_RUNNING {
@@ -198,7 +205,7 @@ impl Drop for Invocation {
     }
 }
 
-pub fn exit_code(status: &InvocationStatusWire) -> Result<u8, ClientError> {
+pub fn exit_code(status: InvocationStatusWire) -> Result<u8, ClientError> {
     if !status.is_terminal() {
         return Err(ClientError::InvalidStatus);
     }
@@ -214,27 +221,12 @@ pub fn exit_code(status: &InvocationStatusWire) -> Result<u8, ClientError> {
     match status.phase {
         5 => Err(ClientError::Cancelled),
         6 => Err(ClientError::Denied),
-        _ => Err(ClientError::InvocationFailed(status.error_category.clone())),
+        _ => Err(ClientError::InvocationFailed(status.error_category)),
     }
 }
 
 fn duplicate_cloexec(fd: impl AsFd) -> Result<OwnedFd, ClientError> {
     rustix::io::fcntl_dupfd_cloexec(fd, 3).map_err(ClientError::DuplicateStdio)
-}
-
-async fn start_agent(
-    allow_interaction: bool,
-) -> (
-    Option<AuthenticationAgent>,
-    Option<AuthenticationAgentError>,
-) {
-    if !allow_interaction {
-        return (None, None);
-    }
-    match AuthenticationAgent::start().await {
-        Ok(agent) => (Some(agent), None),
-        Err(error) => (None, Some(error)),
-    }
 }
 
 #[cfg(test)]
@@ -253,15 +245,15 @@ mod tests {
 
     #[test]
     fn maps_exit_and_signal_statuses() {
-        assert_eq!(exit_code(&status(3, 1, 42, 0)).unwrap(), 42);
-        assert_eq!(exit_code(&status(3, 1, 255, 0)).unwrap(), 255);
-        assert_eq!(exit_code(&status(3, 2, 0, 9)).unwrap(), 137);
+        assert_eq!(exit_code(status(3, 1, 42, 0)).unwrap(), 42);
+        assert_eq!(exit_code(status(3, 1, 255, 0)).unwrap(), 255);
+        assert_eq!(exit_code(status(3, 2, 0, 9)).unwrap(), 137);
         assert!(matches!(
-            exit_code(&status(6, 0, 0, 0)),
+            exit_code(status(6, 0, 0, 0)),
             Err(ClientError::Denied)
         ));
         assert!(matches!(
-            exit_code(&status(5, 0, 0, 0)),
+            exit_code(status(5, 0, 0, 0)),
             Err(ClientError::Cancelled)
         ));
     }

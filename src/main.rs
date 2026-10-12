@@ -82,7 +82,7 @@ async fn run(cli: Cli) -> Result<u8, AppError> {
     match startup {
         Startup::Terminal(_) => {
             let status = invocation.wait().await?;
-            exit_code(&status).map_err(AppError::Client)
+            exit_code(status).map_err(AppError::Client)
         }
         Startup::Running => match mode {
             IoMode::Pipe => finish_pipe(&invocation).await,
@@ -103,7 +103,7 @@ async fn finish_pipe(invocation: &Invocation) -> Result<u8, AppError> {
             return Ok(128_u8.saturating_add(caught as u8));
         }
     };
-    exit_code(&status).map_err(AppError::Client)
+    exit_code(status).map_err(AppError::Client)
 }
 
 async fn finish_pty(invocation: &Invocation, terminal_fd: OwnedFd) -> Result<u8, AppError> {
@@ -192,7 +192,7 @@ async fn finish_pty(invocation: &Invocation, terminal_fd: OwnedFd) -> Result<u8,
     if let Some(error) = forwarding_error {
         return Err(error);
     }
-    exit_code(&status).map_err(AppError::Client)
+    exit_code(status).map_err(AppError::Client)
 }
 
 impl Signals {
