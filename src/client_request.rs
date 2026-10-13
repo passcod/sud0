@@ -96,30 +96,38 @@ mod tests {
             [("PATH".to_owned(), path)]
         );
 
-        let name = format!("SUD0_TEST_MISSING_{}", std::process::id());
-        // SAFETY: This process-unique variable is not concurrently accessed by another test.
-        unsafe { env::remove_var(&name) };
-        assert!(matches!(
-            parse_environment(std::slice::from_ref(&name)),
-            Err(ClientRequestError::MissingEnvironment { .. })
-        ));
-
-        if let Ok(name) = env::var("SUD0_TEST_NON_UTF8_NAME") {
+        // The missing- and non-UTF-8-variable cases run in a recursively
+        // spawned child process so the test process never mutates or injects
+        // invalid values into its own process-global environment.
+        if env::var_os("SUD0_TEST_CHILD_ENVIRONMENT").is_some() {
+            let missing = env::var("SUD0_TEST_MISSING_NAME").unwrap();
             assert!(matches!(
-                parse_environment(&[name]),
+                parse_environment(&[missing]),
+                Err(ClientRequestError::MissingEnvironment { .. })
+            ));
+            let invalid = env::var("SUD0_TEST_NON_UTF8_NAME").unwrap();
+            assert!(matches!(
+                parse_environment(&[invalid]),
                 Err(ClientRequestError::NonUtf8Environment { .. })
             ));
-        } else {
-            let name = format!("SUD0_TEST_NON_UTF8_{}", std::process::id());
-            let status = Command::new(std::env::current_exe().unwrap())
-                .arg("--exact")
-                .arg("client_request::tests::environment_splits_first_equals_and_reports_missing_import")
-                .env("SUD0_TEST_NON_UTF8_NAME", &name)
-                .env(name, OsString::from_vec(vec![b'v', 0xff]))
-                .status()
-                .unwrap();
-            assert!(status.success());
+            return;
         }
+
+        let missing_name = format!("SUD0_TEST_MISSING_{}", std::process::id());
+        let invalid_name = format!("SUD0_TEST_NON_UTF8_{}", std::process::id());
+        let status = Command::new(std::env::current_exe().unwrap())
+            .arg("--exact")
+            .arg(
+                "client_request::tests::environment_splits_first_equals_and_reports_missing_import",
+            )
+            .env_remove(&missing_name)
+            .env("SUD0_TEST_CHILD_ENVIRONMENT", "1")
+            .env("SUD0_TEST_MISSING_NAME", &missing_name)
+            .env("SUD0_TEST_NON_UTF8_NAME", &invalid_name)
+            .env(&invalid_name, OsString::from_vec(vec![b'v', 0xff]))
+            .status()
+            .unwrap();
+        assert!(status.success());
     }
 
     #[test]
