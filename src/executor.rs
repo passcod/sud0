@@ -3,11 +3,15 @@ use std::env;
 use std::ffi::{CStr, CString, OsStr};
 use std::fs::File;
 use std::io;
-use std::os::fd::{FromRawFd, IntoRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 
-use nix::errno::Errno;
+use nix::errno::Errno as NixErrno;
 use nix::unistd::{execve, getpid, getresuid, getsid, setsid};
+use rustix::fs::fstat;
+use rustix::io::{Errno, FdFlags, fcntl_getfd, fcntl_setfd};
+use rustix::process::getpgrp;
+use rustix::termios::{isatty, tcgetpgrp, tcgetsid};
 use thiserror::Error;
 
 use crate::constants::{
@@ -26,18 +30,43 @@ const BASELINE_ENVIRONMENT: &[(&str, &str)] = &[
     ("SHELL", ROOT_SHELL),
 ];
 
+/// First descriptor closed by the bulk close-range step: every descriptor the
+/// transaction does not own.
+const FIRST_UNRELATED_FD: libc::c_uint = (CWD_FD + 1) as libc::c_uint;
+
 /// Runs the fixed privileged executor transaction.
 ///
-/// It either replaces the current process image or returns an error after failing closed.
+/// # Outcomes
+///
+/// On success, `execve` replaces the process image. The two activation
+/// descriptors do not survive because they carry `FD_CLOEXEC`, and no other
+/// descriptor numbered 3 or above survives the transaction.
+///
+/// On every error before terminal and session setup — including partial
+/// activation-descriptor claiming or close-on-exec marking — the function
+/// returns without executing caller-controlled code. Each descriptor it
+/// claimed is closed by normal ownership destruction before the error
+/// escapes; an open descriptor it never claimed keeps its prior state
+/// untouched. No current-directory, session, process-group,
+/// controlling-terminal, or close-range effect has been applied at that point.
+///
+/// On later errors the function likewise executes no requested command and
+/// closes every descriptor it claimed through normal ownership destruction,
+/// but effects already applied may remain: `FD_CLOEXEC` marks on descriptors
+/// 3 and 4, the working-directory change, a new session and process group, and
+/// an acquired controlling terminal. A failed bulk close additionally leaves
+/// inherited descriptors numbered 5 and above open; the dedicated
+/// `sud0-exec` entrypoint terminates the process on any error, releasing them.
 ///
 /// # Safety
 ///
-/// The caller must be the initial, single-threaded entry point of a freshly executed process.
-/// Descriptors 3 and 4 must be open and uniquely owned by this transaction; no Rust value or other
-/// code may own, close, duplicate, or replace them during the call. No live Rust value may own any
-/// descriptor at or above 3 when this function reaches its close-range step, other than the two
-/// values created internally and relinquished immediately before that step. No signal handler or
-/// callback may mutate the descriptor table during the call.
+/// The caller must be the initial, single-threaded entry point of a freshly
+/// executed process. Descriptors 3 and 4 must be open and uniquely owned by
+/// this transaction; no Rust value, thread, signal handler, or other code may
+/// own, close, duplicate, or replace them during the call. No live Rust value
+/// may own any descriptor numbered 5 or above when this function reaches its
+/// bulk-close step. No signal handler or callback may mutate the descriptor
+/// table during the call.
 pub unsafe fn run() -> Result<Infallible, ExecutorError> {
     require_root_uids()?;
     validate_process_activation_environment()?;
@@ -51,12 +80,24 @@ pub unsafe fn run() -> Result<Infallible, ExecutorError> {
 
     nix::unistd::fchdir(&working_directory).map_err(ExecutorError::ChangeDirectory)?;
 
-    // Transfer responsibility for closing descriptors 3 and 4 to `close_unrelated_fds`; keeping an
-    // owner alive across that call would let its destructor close a future reuse of either number.
-    let _ = request_file.into_raw_fd();
-    let _ = working_directory.into_owned_fd().into_raw_fd();
-    close_unrelated_fds()?;
+    // SAFETY: The precondition of `close_unrelated_fds` is that no live Rust
+    // value owns, or can close, any descriptor numbered 5 or above. Artifact
+    // facts: every descriptor-owning value this function created came from
+    // `take_activation_fds` and is one of `request_file` (descriptor 3) or
+    // `working_directory` (descriptor 4); `decode_sealed_request`,
+    // `prepare_terminal`, `build_argv`, `build_environment`,
+    // `command_candidates`, and `fchdir` create no descriptor owners; no
+    // thread, tokio task, signal handler, or foreign callback exists in this
+    // initial single-threaded process to hold or later create one, and no
+    // generated code from this crate or its dependencies runs on this path
+    // before the bulk close. The standard descriptors 0–2 are below the
+    // closed range. The precondition therefore holds.
+    unsafe { close_unrelated_fds() }?;
 
+    // `request_file` and `working_directory` stay owned through every
+    // attempted `execve`: on success their `FD_CLOEXEC` marks make `execve`
+    // close descriptors 3 and 4 atomically, and on failure their normal
+    // destruction below closes them before the error escapes.
     let error = try_exec_candidates(&candidates, |path| {
         execve(path, &argv, &environment).map(|never| match never {})
     });
@@ -87,7 +128,7 @@ fn validate_process_activation_environment() -> Result<(), ExecutorError> {
 
 /// Strictly validates the three raw systemd descriptor-activation values.
 fn validate_activation_environment(
-    current_pid: libc::pid_t,
+    current_pid: i32,
     listen_pid: Option<&[u8]>,
     listen_fds: Option<&[u8]>,
     listen_fdnames: Option<&[u8]>,
@@ -121,41 +162,46 @@ fn parse_decimal(value: &[u8]) -> Result<u32, ActivationError> {
 }
 
 fn take_activation_fds() -> Result<(File, WorkingDirectoryFd), ExecutorError> {
-    set_close_on_exec(REQUEST_FD)?;
-    set_close_on_exec(CWD_FD)?;
-
-    // SAFETY: The successful `fcntl` calls in `set_close_on_exec` establish that descriptor 3 is
-    // open. This function is the sole ownership ingress for it, and `File` takes responsibility for
-    // closing it. No other Rust owner exists.
-    let request_file = unsafe { File::from_raw_fd(REQUEST_FD) };
-    // SAFETY: The same argument applies to open descriptor 4. The resulting `OwnedFd` is immediately
-    // passed through the directory validation boundary before any use as a working directory.
-    let cwd_fd = unsafe { OwnedFd::from_raw_fd(CWD_FD) };
-    let working_directory = WorkingDirectoryFd::try_from(cwd_fd)?;
+    let request_fd = claim_activation_fd(REQUEST_FD)?;
+    let request_file = File::from(request_fd);
+    let cwd_fd = claim_activation_fd(CWD_FD)?;
+    let working_directory =
+        WorkingDirectoryFd::try_from(cwd_fd).map_err(ExecutorError::WorkingDirectory)?;
     Ok((request_file, working_directory))
 }
 
-fn set_close_on_exec(fd: RawFd) -> Result<(), ExecutorError> {
-    // SAFETY: `fcntl(F_GETFD)` and `fcntl(F_SETFD)` consume only the integer descriptor and flag
-    // value; they dereference no Rust pointers. A successful `F_GETFD` establishes that `fd` is
-    // open, and this single-threaded executor performs no operation that can close or replace it
-    // before `F_SETFD`. A successful `F_SETFD` preserves ownership and establishes `FD_CLOEXEC`.
-    let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
-    if flags == -1 {
-        return Err(ExecutorError::ActivationDescriptor {
+/// Claims one systemd activation descriptor as an owned descriptor marked
+/// close-on-exec.
+///
+/// On failure the claimed descriptor is closed by normal `OwnedFd` destruction
+/// before the error escapes; a descriptor never claimed is left untouched.
+///
+/// The `fcntl` operations are safe typed rustix APIs whose `linux_raw`
+/// lowering — the backend the checked build entrypoint enforces and
+/// docs/tcb.md records — passes no C-variadic arguments.
+fn claim_activation_fd(fd: RawFd) -> Result<OwnedFd, ExecutorError> {
+    // SAFETY: `executor::run`'s caller contract establishes that `fd` is open
+    // and uniquely owned by this transaction at this point. Before this claim,
+    // the process has executed only `getresuid`, `getpid`, and
+    // `std::env::var_os`, none of which open, close, or reallocate
+    // descriptors, so even if that contract were violated and `fd` were
+    // closed, no reuse of the number could have occurred and the error-path
+    // destruction below can only produce `EBADF`. `from_raw_fd` here is the
+    // sole ownership ingress for the descriptor; normal `OwnedFd` destruction
+    // owns closing it on every subsequent path.
+    let owned = unsafe { OwnedFd::from_raw_fd(fd) };
+
+    let flags = fcntl_getfd(&owned).map_err(|source| ExecutorError::ActivationDescriptor {
+        fd,
+        source: io::Error::from(source),
+    })?;
+    fcntl_setfd(&owned, flags | FdFlags::CLOEXEC).map_err(|source| {
+        ExecutorError::SetCloseOnExec {
             fd,
-            source: io::Error::last_os_error(),
-        });
-    }
-    // SAFETY: The successful `F_GETFD` above established that `fd` remains open, and this call passes
-    // no pointer-valued variadic argument.
-    if unsafe { libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) } == -1 {
-        return Err(ExecutorError::SetCloseOnExec {
-            fd,
-            source: io::Error::last_os_error(),
-        });
-    }
-    Ok(())
+            source: io::Error::from(source),
+        }
+    })?;
+    Ok(owned)
 }
 
 /// Builds the explicit command environment without consulting ambient process values.
@@ -207,33 +253,54 @@ fn command_candidates(argv0: &CStr) -> Vec<CString> {
 
 fn try_exec_candidates(
     candidates: &[CString],
-    mut execute: impl FnMut(&CStr) -> Result<(), Errno>,
-) -> Errno {
+    mut execute: impl FnMut(&CStr) -> Result<(), NixErrno>,
+) -> NixErrno {
     let mut saw_access_denied = false;
     for candidate in candidates {
         match execute(candidate) {
             Ok(()) => unreachable!("successful exec does not return"),
-            Err(Errno::EACCES) => saw_access_denied = true,
-            Err(Errno::ENOENT | Errno::ENOTDIR) => {}
+            Err(NixErrno::EACCES) => saw_access_denied = true,
+            Err(NixErrno::ENOENT | NixErrno::ENOTDIR) => {}
             Err(error) => return error,
         }
     }
     if saw_access_denied {
-        Errno::EACCES
+        NixErrno::EACCES
     } else {
-        Errno::ENOENT
+        NixErrno::ENOENT
     }
 }
 
-fn close_unrelated_fds() -> Result<(), ExecutorError> {
-    // SAFETY: `close_range` accepts only integer bounds and flags, dereferences no Rust memory, and
-    // runs after every Rust owner of a descriptor at or above 3 has been dropped. The process is
-    // single-threaded, while `CLOSE_RANGE_UNSHARE` also requests a private descriptor table before
-    // closing the complete range. Kernel rejection, including lack of support, is returned as an
-    // error and therefore fails closed.
+/// Closes every inherited descriptor numbered 5 and above in a freshly
+/// unshared descriptor table.
+///
+/// # Safety
+///
+/// The caller must ensure that no live Rust value owns, or can close, any
+/// descriptor numbered 5 or above at the moment of the call: the kernel closes
+/// those descriptors here, so a surviving owner's destructor could later close
+/// an unrelated reuse of the same descriptor number. The caller must also
+/// ensure the process is single-threaded with no concurrent descriptor-table
+/// mutation.
+unsafe fn close_unrelated_fds() -> Result<(), ExecutorError> {
+    // SAFETY (leaf proof):
+    // Obligation: `libc::close_range` is declared with the fixed,
+    // non-variadic prototype `extern "C" fn(c_uint, c_uint, c_int) -> c_int`;
+    // this call passes exactly the three declared integer arguments, so no C
+    // variadic extraction occurs, and the function dereferences no Rust
+    // memory.
+    // Artifact facts: the lower bound is the `FIRST_UNRELATED_FD` constant
+    // (descriptor 5, one past the highest owned activation descriptor); the
+    // upper bound is `c_uint::MAX`; the flags value is `CLOSE_RANGE_UNSHARE`
+    // cast to the declared `c_int`.
+    // Semantics (TCB, docs/tcb.md): Linux `close_range(2)` with
+    // `CLOSE_RANGE_UNSHARE` first installs a private descriptor table for the
+    // calling process and then closes every descriptor in the inclusive
+    // range. A rejected or unsupported operation returns -1 and sets errno,
+    // which the error path reports, failing closed.
     let result = unsafe {
         libc::close_range(
-            REQUEST_FD as libc::c_uint,
+            FIRST_UNRELATED_FD,
             libc::c_uint::MAX,
             libc::CLOSE_RANGE_UNSHARE as libc::c_int,
         )
@@ -263,14 +330,7 @@ fn prepare_terminal(mode: IoMode) -> Result<(), ExecutorError> {
         setsid().map_err(ExecutorError::CreateSession)?;
     }
 
-    // SAFETY: `TIOCSCTTY` with argument zero consumes no pointer and asks the kernel to assign the
-    // already-validated terminal on fd 0 without the force-steal mode. An invalid or ineligible
-    // descriptor is reported as an error. The subsequent snapshot verifies all required effects.
-    if unsafe { libc::ioctl(libc::STDIN_FILENO, libc::TIOCSCTTY, 0) } == -1 {
-        return Err(ExecutorError::AcquireControllingTerminal(
-            io::Error::last_os_error(),
-        ));
-    }
+    acquire_controlling_terminal(io::stdin().as_fd())?;
 
     let after = terminal_snapshot()?;
     validate_terminal_shape(&after)?;
@@ -281,30 +341,60 @@ fn prepare_terminal(mode: IoMode) -> Result<(), ExecutorError> {
     }
 }
 
+/// Assigns the validated terminal on `fd` as this process's controlling
+/// terminal without the force-steal mode.
+fn acquire_controlling_terminal(fd: BorrowedFd<'_>) -> Result<(), ExecutorError> {
+    // SAFETY (leaf proof):
+    // Obligation: glibc's `ioctl` wrapper is declared
+    // `int ioctl(int, unsigned long, ...)`; its implementation executes
+    // `va_arg(ap, void *)` unconditionally for every command. The third
+    // argument passed here is `std::ptr::null_mut::<libc::c_void>()`, a value
+    // whose type is exactly the `void *` that `va_arg` extracts, so the
+    // extraction is defined (ISO C23 7.16.1.1).
+    // Semantics (TCB, docs/tcb.md): Linux consumes the third syscall word of
+    // `TIOCSCTTY` as an integer force flag; the null pointer argument lowers
+    // to the all-zero word, requesting assignment without stealing a
+    // controlling terminal from another session. An ineligible descriptor is
+    // reported as an error.
+    // The call dereferences no Rust memory and retains no pointer, and its
+    // effects are re-verified by the terminal snapshot the caller takes
+    // immediately afterwards.
+    let result = unsafe {
+        libc::ioctl(
+            fd.as_raw_fd(),
+            libc::TIOCSCTTY,
+            std::ptr::null_mut::<libc::c_void>(),
+        )
+    };
+    if result == -1 {
+        return Err(ExecutorError::AcquireControllingTerminal(
+            io::Error::last_os_error(),
+        ));
+    }
+    Ok(())
+}
+
 struct TerminalSnapshot {
-    pid: libc::pid_t,
-    process_group: libc::pid_t,
-    session: libc::pid_t,
+    pid: i32,
+    process_group: i32,
+    session: i32,
     terminals: [TerminalState; 3],
 }
 
 struct TerminalState {
-    device: libc::dev_t,
-    terminal_session: Option<libc::pid_t>,
-    foreground_group: Option<libc::pid_t>,
+    device: u64,
+    terminal_session: Option<i32>,
+    foreground_group: Option<i32>,
 }
 
 fn terminal_snapshot() -> Result<TerminalSnapshot, ExecutorError> {
     let pid = getpid().as_raw();
     let session = getsid(None).map_err(ExecutorError::ReadSession)?.as_raw();
-
-    // SAFETY: `getpgrp` has no arguments or memory access supplied by Rust and cannot violate Rust
-    // memory invariants.
-    let process_group = unsafe { libc::getpgrp() };
+    let process_group = getpgrp().as_raw_pid();
     let terminals = [
-        terminal_state(libc::STDIN_FILENO)?,
-        terminal_state(libc::STDOUT_FILENO)?,
-        terminal_state(libc::STDERR_FILENO)?,
+        terminal_state(io::stdin().as_fd())?,
+        terminal_state(io::stdout().as_fd())?,
+        terminal_state(io::stderr().as_fd())?,
     ];
     Ok(TerminalSnapshot {
         pid,
@@ -314,28 +404,16 @@ fn terminal_snapshot() -> Result<TerminalSnapshot, ExecutorError> {
     })
 }
 
-fn terminal_state(fd: RawFd) -> Result<TerminalState, ExecutorError> {
-    // SAFETY: `isatty` consumes only an integer descriptor and dereferences no Rust memory.
-    if unsafe { libc::isatty(fd) } != 1 {
-        return Err(ExecutorError::PtyRequiresTerminal { fd });
+fn terminal_state(fd: BorrowedFd<'_>) -> Result<TerminalState, ExecutorError> {
+    if !isatty(fd) {
+        return Err(ExecutorError::PtyRequiresTerminal { fd: fd.as_raw_fd() });
     }
 
-    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
-    // SAFETY: `stat` points to writable, correctly aligned storage for one `libc::stat`; `fstat`
-    // initializes it on success and does not retain the pointer.
-    if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } == -1 {
-        return Err(ExecutorError::InspectTerminal {
-            fd,
-            source: io::Error::last_os_error(),
-        });
-    }
-    // SAFETY: The successful `fstat` immediately above initialized the complete `libc::stat` value.
-    let stat = unsafe { stat.assume_init() };
-
-    // SAFETY: `tcgetsid` and `tcgetpgrp` consume only an integer descriptor and return errors for
-    // descriptors without the required terminal relationship; they access no Rust memory.
+    let stat = fstat(fd).map_err(|source| ExecutorError::InspectTerminal {
+        fd: fd.as_raw_fd(),
+        source: io::Error::from(source),
+    })?;
     let terminal_session = terminal_relationship(fd, TerminalQuery::Session)?;
-    // SAFETY: As above, this query consumes only the validated integer terminal descriptor.
     let foreground_group = terminal_relationship(fd, TerminalQuery::ForegroundGroup)?;
 
     Ok(TerminalState {
@@ -351,28 +429,32 @@ enum TerminalQuery {
 }
 
 fn terminal_relationship(
-    fd: RawFd,
+    fd: BorrowedFd<'_>,
     query: TerminalQuery,
-) -> Result<Option<libc::pid_t>, ExecutorError> {
-    // SAFETY: Both operations consume only an integer descriptor and access no Rust memory.
-    let value = unsafe {
-        match query {
-            TerminalQuery::Session => libc::tcgetsid(fd),
-            TerminalQuery::ForegroundGroup => libc::tcgetpgrp(fd),
-        }
+) -> Result<Option<i32>, ExecutorError> {
+    let value = match query {
+        TerminalQuery::Session => tcgetsid(fd).map(|pid| pid.as_raw_pid()),
+        TerminalQuery::ForegroundGroup => tcgetpgrp(fd).map(|pid| pid.as_raw_pid()),
     };
-    if value != -1 {
-        return Ok(Some(value));
+    match value {
+        Ok(value) => Ok(Some(value)),
+        Err(error) if error == Errno::NOTTY => Ok(None),
+        // rustix maps a successful zero foreground process group (an
+        // unassigned terminal) to NOTSUP; retain the exact zero value the
+        // libc `tcgetpgrp` call previously returned so the readiness contract
+        // is unchanged.
+        Err(Errno::NOTSUP) if matches!(query, TerminalQuery::ForegroundGroup) => Ok(Some(0)),
+        Err(source) => Err(match query {
+            TerminalQuery::Session => ExecutorError::ReadTerminalSession {
+                fd: fd.as_raw_fd(),
+                source: io::Error::from(source),
+            },
+            TerminalQuery::ForegroundGroup => ExecutorError::ReadForegroundGroup {
+                fd: fd.as_raw_fd(),
+                source: io::Error::from(source),
+            },
+        }),
     }
-
-    let source = io::Error::last_os_error();
-    if source.raw_os_error() == Some(libc::ENOTTY) {
-        return Ok(None);
-    }
-    Err(match query {
-        TerminalQuery::Session => ExecutorError::ReadTerminalSession { fd, source },
-        TerminalQuery::ForegroundGroup => ExecutorError::ReadForegroundGroup { fd, source },
-    })
 }
 
 fn validate_terminal_shape(snapshot: &TerminalSnapshot) -> Result<(), ExecutorError> {
@@ -419,7 +501,7 @@ pub enum ActivationError {
 #[derive(Debug, Error)]
 pub enum ExecutorError {
     #[error("failed to inspect real, effective, and saved user IDs: {0}")]
-    ReadUserIds(Errno),
+    ReadUserIds(NixErrno),
     #[error("real, effective, and saved user IDs must all be zero")]
     NotFullyRoot,
     #[error("invalid descriptor activation environment: {0}")]
@@ -437,7 +519,7 @@ pub enum ExecutorError {
     #[error("failed to inspect terminal descriptor {fd}: {source}")]
     InspectTerminal { fd: RawFd, source: io::Error },
     #[error("failed to read the current session: {0}")]
-    ReadSession(Errno),
+    ReadSession(NixErrno),
     #[error("failed to read the terminal session for descriptor {fd}: {source}")]
     ReadTerminalSession { fd: RawFd, source: io::Error },
     #[error("failed to read the foreground process group for descriptor {fd}: {source}")]
@@ -445,17 +527,17 @@ pub enum ExecutorError {
     #[error("PTY standard descriptors do not refer to the same terminal")]
     MismatchedTerminals,
     #[error("failed to create a fresh terminal session: {0}")]
-    CreateSession(Errno),
+    CreateSession(NixErrno),
     #[error("failed to acquire the controlling terminal without force: {0}")]
     AcquireControllingTerminal(io::Error),
     #[error("controlling terminal session or foreground process group verification failed")]
     InvalidControllingTerminal,
     #[error("failed to change to the opened working directory: {0}")]
-    ChangeDirectory(Errno),
+    ChangeDirectory(NixErrno),
     #[error("failed to close inherited descriptors: {0}")]
     CloseDescriptors(io::Error),
     #[error("command execution failed: {0}")]
-    Execute(Errno),
+    Execute(NixErrno),
 }
 
 #[cfg(test)]
@@ -592,20 +674,21 @@ mod tests {
     fn search_remembers_access_denied_but_does_not_fallback_on_bad_format() {
         let candidates = command_candidates(CString::new("tool").unwrap().as_c_str());
         let visited = RefCell::new(Vec::new());
-        let errors = RefCell::new(vec![Errno::ENOENT, Errno::EACCES, Errno::ENOENT].into_iter());
+        let errors =
+            RefCell::new(vec![NixErrno::ENOENT, NixErrno::EACCES, NixErrno::ENOENT].into_iter());
         let result = try_exec_candidates(&candidates, |path| {
             visited.borrow_mut().push(path.to_owned());
             Err(errors.borrow_mut().next().unwrap())
         });
-        assert_eq!(result, Errno::EACCES);
+        assert_eq!(result, NixErrno::EACCES);
         assert_eq!(visited.borrow().len(), 3);
 
         let visited = RefCell::new(Vec::new());
         let result = try_exec_candidates(&candidates, |path| {
             visited.borrow_mut().push(path.to_owned());
-            Err(Errno::ENOEXEC)
+            Err(NixErrno::ENOEXEC)
         });
-        assert_eq!(result, Errno::ENOEXEC);
+        assert_eq!(result, NixErrno::ENOEXEC);
         assert_eq!(visited.borrow().len(), 1);
     }
 }
