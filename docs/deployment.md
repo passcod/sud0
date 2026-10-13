@@ -64,4 +64,6 @@ consumes artifacts only when that stamp still matches the current tree.
 Direct `cargo` invocations that bypass the gate are development builds
 only. The `-git` Arch package builds from a moving branch and is a
 development artifact; release packages must pin an immutable source
-identity and checksum (see `packaging/arch/`).
+identity and checksum (see `packaging/arch-release/`; a release build from
+an extracted archive declares its source identity via
+`SUD0_SOURCE_IDENTITY` instead of git metadata).

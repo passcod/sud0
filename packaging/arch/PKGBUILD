@@ -1,4 +1,6 @@
-# VCS package for the current default branch; release packaging will replace this source.
+# Development VCS package for the current default branch; it is not proof of
+# an audited release artifact. Immutable, checksummed release packaging is
+# in packaging/arch-release.
 pkgname=sud0-git
 pkgver=0.1.0
 pkgrel=1

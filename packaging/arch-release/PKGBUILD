@@ -1,0 +1,51 @@
+# Release package for sud0.
+#
+# Unlike the development -git package (packaging/arch), this builds from an
+# immutable, checksummed source identity. To cut a release:
+#   1. tag the audited revision (v$pkgver) and push it,
+#   2. update pkgver below to the tagged version,
+#   3. update b2sums with `makepkg -g` output for the tag tarball,
+#   4. rebuild and install the release binaries via `make check && make install`
+#      on the tagged checkout so the audited toolchain/target gate applies.
+# The placeholder digest below is intentionally invalid so the package
+# cannot be built from an unverified source.
+pkgname=sud0
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Polkit-authorized root command runner'
+arch=('x86_64')
+url='https://github.com/passcod/sud0'
+license=('MIT OR Apache-2.0')
+depends=('bash' 'gcc-libs' 'glibc' 'polkit' 'systemd>=257')
+makedepends=('libxml2' 'rust')
+provides=('sud0')
+conflicts=('sud0')
+backup=('etc/sud0/prompt.template')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/passcod/sud0/archive/refs/tags/v$pkgver.tar.gz")
+b2sums=('0000000000000000000000000000000000000000000000000000000000000000')
+
+prepare() {
+    cd "$srcdir/$pkgname-$pkgver"
+    if [ "${b2sums[0]}" = 0000000000000000000000000000000000000000000000000000000000000000 ]; then
+        error 'fill b2sums with the digest of the v'"$pkgver"' source tarball before building'
+        return 1
+    fi
+    cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
+}
+
+build() {
+    cd "$srcdir/$pkgname-$pkgver"
+    CARGO_NET_OFFLINE=true SUD0_SOURCE_IDENTITY="$pkgname-$pkgver.tar.gz b2:${b2sums[0]}" \
+        make release
+}
+
+check() {
+    cd "$srcdir/$pkgname-$pkgver"
+    CARGO_NET_OFFLINE=true SUD0_SOURCE_IDENTITY="$pkgname-$pkgver.tar.gz b2:${b2sums[0]}" \
+        make check
+}
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+    make DESTDIR="$pkgdir" PREFIX=/usr install
+}

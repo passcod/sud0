@@ -15,7 +15,7 @@ LIBEXECDIR := $(DESTDIR)$(PREFIX)/lib/sud0
 DATADIR := $(DESTDIR)$(PREFIX)/share
 SYSTEMDUNITDIR := $(DESTDIR)$(PREFIX)/lib/systemd/system
 
-.PHONY: all release check install uninstall ensure-unprivileged ensure-prefix ensure-build ensure-committed ensure-release
+.PHONY: all release check install uninstall ensure-unprivileged ensure-prefix ensure-build ensure-release
 
 ensure-unprivileged:
 	@test "$$(id -u)" -ne 0 || { echo 'refusing to build or run checks as root' >&2; exit 1; }
@@ -29,30 +29,18 @@ ensure-prefix:
 ensure-build:
 	./scripts/ensure-build.sh
 
-# Release artifacts must trace to an identified source state: the commit plus
-# the exact working-tree diff recorded in the stamp.
-ensure-committed:
-	@test -n "$$(git rev-parse HEAD)" || { echo 'not a git repository' >&2; exit 1; }
-
 ensure-release:
 	./scripts/check-release-artifact.sh
 
 all: ensure-unprivileged ensure-build
 	$(CARGO) build --locked --target $(TARGET)
 
-release: ensure-unprivileged ensure-build ensure-committed
+# SUD0_SOURCE_IDENTITY declares the source identity for release builds from
+# an extracted source archive with no git metadata; the stamp script records
+# it instead of the commit and working-tree state.
+release: ensure-unprivileged ensure-build
 	$(CARGO) build --release --locked --bins --target $(TARGET)
-	@{ \
-		printf 'target %s\n' '$(TARGET)'; \
-		printf 'rustc %s\n' "$$(rustc --version | sed 's/^rustc //')"; \
-		printf 'source %s\n' "$$(git rev-parse HEAD)"; \
-		printf 'state %s\n' "$$({ git rev-parse HEAD; git status --porcelain; } | sha256sum | cut -d ' ' -f1)"; \
-		printf 'lock %s\n' "$$(sha256sum Cargo.lock | cut -d ' ' -f1)"; \
-		for binary in sud0 sud0-broker sud0-exec; do \
-			printf 'binary %s %s\n' "$$binary" "$$(sha256sum $(RELEASE_DIR)/$$binary | cut -d ' ' -f1)"; \
-		done; \
-	} > $(RELEASE_STAMP)
-	@echo 'release identity recorded in $(RELEASE_STAMP)'
+	SUD0_SOURCE_IDENTITY="$(SUD0_SOURCE_IDENTITY)" ./scripts/release-stamp.sh
 
 check: ensure-unprivileged ensure-build
 	$(CARGO) fmt -- --check

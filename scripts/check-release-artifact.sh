@@ -30,13 +30,26 @@ current_rustc=$(rustc --version | sed 's/^rustc //')
 [ "$(expected rustc)" = "$current_rustc" ] ||
     fail 'toolchain changed since the release build; run make release'
 
-[ "$(expected source)" = "$(git rev-parse HEAD)" ] ||
-    fail 'source revision changed since the release build; run make release'
-
-current_state=$({ git rev-parse HEAD; git status --porcelain; } | sha256sum |
-    cut -d ' ' -f1)
-[ "$(expected state)" = "$current_state" ] ||
-    fail 'working-tree state changed since the release build; run make release'
+source_line=$(expected source)
+case $source_line in
+commit\ *)
+    current_source="commit $(git rev-parse HEAD)"
+    [ "$source_line" = "$current_source" ] ||
+        fail 'source revision changed since the release build; run make release'
+    current_state=$({ git rev-parse HEAD; git status --porcelain; } |
+        sha256sum | cut -d ' ' -f1)
+    [ "$(expected state)" = "$current_state" ] ||
+        fail 'working-tree state changed since the release build; run make release'
+    ;;
+identity\ *)
+    current_identity="identity ${SUD0_SOURCE_IDENTITY:-}"
+    [ "$source_line" = "$current_identity" ] ||
+        fail 'the declared source identity changed; run make release'
+    [ "$(expected state)" = "none" ] ||
+        fail 'stamp records an unexpected state line'
+    ;;
+*) fail "stamp records an unreadable source line" ;;
+esac
 
 [ "$(expected lock)" = "$(sha256sum Cargo.lock | cut -d ' ' -f1)" ] ||
     fail 'Cargo.lock changed since the release build; run make release'
