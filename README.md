@@ -6,6 +6,9 @@ Like run0, this is using polkit, _not_ a setuid binary like sudo.
 
 Not audited. Do not use in production.
 
+The runtime assumptions of a deployed system are in [docs/deployment.md](docs/deployment.md),
+and the trusted computing base of the safety proofs in [docs/tcb.md](docs/tcb.md).
+
 ## Examples
 
 ```console

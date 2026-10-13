@@ -30,6 +30,5 @@ ProtectHostname=yes
 ProtectKernelLogs=yes
 ProtectKernelModules=yes
 ProtectKernelTunables=yes
-ProtectProc=invisible
 ProtectSystem=strict
 RestrictNamespaces=yes
