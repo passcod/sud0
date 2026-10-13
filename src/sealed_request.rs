@@ -3,9 +3,9 @@ use std::io;
 use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::fs::FileExt;
 
-use nix::fcntl::{FcntlArg, SealFlag, fcntl};
 use nix::sys::memfd::{MFdFlags, memfd_create};
 use nix::sys::stat::{SFlag, fstat};
+use rustix::fs::{OFlags, SealFlags, fcntl_add_seals, fcntl_get_seals, fcntl_getfl};
 use thiserror::Error;
 
 use crate::FrozenRequest;
@@ -13,10 +13,10 @@ use crate::constants::MAX_ENCODED_REQUEST_BYTES;
 use crate::error::ProtocolError;
 
 const MEMFD_NAME: &str = "sud0-request";
-const REQUIRED_SEALS: SealFlag = SealFlag::F_SEAL_WRITE
-    .union(SealFlag::F_SEAL_SHRINK)
-    .union(SealFlag::F_SEAL_GROW)
-    .union(SealFlag::F_SEAL_SEAL);
+const REQUIRED_SEALS: SealFlags = SealFlags::WRITE
+    .union(SealFlags::SHRINK)
+    .union(SealFlags::GROW)
+    .union(SealFlags::SEAL);
 
 /// An owned descriptor whose contents are a verified frozen request protected by all mandatory
 /// Linux file seals.
@@ -40,7 +40,7 @@ impl SealedRequestFd {
 
         file.write_all_at(&encoded, 0)
             .map_err(SealedRequestError::Write)?;
-        fcntl(&file, FcntlArg::F_ADD_SEALS(REQUIRED_SEALS)).map_err(SealedRequestError::Seal)?;
+        fcntl_add_seals(&file, REQUIRED_SEALS).map_err(SealedRequestError::Seal)?;
         Ok(Self { file })
     }
 }
@@ -56,8 +56,8 @@ impl AsFd for SealedRequestFd {
 /// Acceptance is based on observable descriptor properties and seals, not a claim about whether the
 /// object was originally created by `memfd_create(2)`.
 pub fn decode_sealed_request(file: &File) -> Result<FrozenRequest, SealedRequestError> {
-    let flags = fcntl(file, FcntlArg::F_GETFL).map_err(SealedRequestError::GetFlags)?;
-    if flags & libc::O_ACCMODE == libc::O_WRONLY || flags & libc::O_PATH != 0 {
+    let flags = fcntl_getfl(file).map_err(SealedRequestError::GetFlags)?;
+    if flags & OFlags::ACCMODE == OFlags::WRONLY || flags.contains(OFlags::PATH) {
         return Err(SealedRequestError::NotReadable);
     }
 
@@ -87,9 +87,8 @@ pub fn decode_sealed_request(file: &File) -> Result<FrozenRequest, SealedRequest
     FrozenRequest::decode(&encoded).map_err(SealedRequestError::Decode)
 }
 
-fn get_seals(file: &File) -> Result<SealFlag, SealedRequestError> {
-    let bits = fcntl(file, FcntlArg::F_GET_SEALS).map_err(SealedRequestError::GetSeals)?;
-    Ok(SealFlag::from_bits_retain(bits))
+fn get_seals(file: &File) -> Result<SealFlags, SealedRequestError> {
+    fcntl_get_seals(file).map_err(SealedRequestError::GetSeals)
 }
 
 /// Failure to create or consume an immutable request descriptor.
@@ -100,9 +99,9 @@ pub enum SealedRequestError {
     #[error("failed to write request descriptor: {0}")]
     Write(io::Error),
     #[error("failed to seal request descriptor: {0}")]
-    Seal(nix::errno::Errno),
+    Seal(rustix::io::Errno),
     #[error("failed to inspect request descriptor flags: {0}")]
-    GetFlags(nix::errno::Errno),
+    GetFlags(rustix::io::Errno),
     #[error("request descriptor is not readable")]
     NotReadable,
     #[error("failed to inspect request descriptor metadata: {0}")]
@@ -114,9 +113,9 @@ pub enum SealedRequestError {
     #[error("request descriptor has {actual} bytes; the maximum is {maximum}")]
     TooLarge { actual: usize, maximum: usize },
     #[error("failed to inspect request descriptor seals: {0}")]
-    GetSeals(nix::errno::Errno),
-    #[error("request descriptor lacks mandatory seals (actual bits: 0x{actual:x})")]
-    MissingSeals { actual: SealFlag },
+    GetSeals(rustix::io::Errno),
+    #[error("request descriptor lacks mandatory seals (actual bits: 0x{:x})", actual.bits())]
+    MissingSeals { actual: SealFlags },
     #[error("failed to read request descriptor: {0}")]
     Read(io::Error),
     #[error("failed to decode request descriptor: {0}")]
@@ -170,11 +169,7 @@ mod tests {
             Err(SealedRequestError::MissingSeals { .. })
         ));
 
-        fcntl(
-            &file,
-            FcntlArg::F_ADD_SEALS(SealFlag::F_SEAL_WRITE | SealFlag::F_SEAL_SHRINK),
-        )
-        .unwrap();
+        fcntl_add_seals(&file, SealFlags::WRITE.union(SealFlags::SHRINK)).unwrap();
         assert!(matches!(
             decode_sealed_request(&file),
             Err(SealedRequestError::MissingSeals { .. })

@@ -2,9 +2,10 @@ use std::io;
 use std::os::fd::{BorrowedFd, OwnedFd};
 use std::sync::Arc;
 
-use nix::fcntl::{FcntlArg, OFlag, fcntl, open};
+use nix::fcntl::{OFlag, open};
 use nix::sys::signal::{Signal, kill};
 use nix::unistd::Pid;
+use rustix::fs::{OFlags, fcntl_getfl, fcntl_setfl};
 use rustix::termios::{OptionalActions, Termios, tcgetattr, tcgetwinsize, tcsetattr};
 use thiserror::Error;
 use tokio::io::{Interest, unix::AsyncFd};
@@ -33,7 +34,7 @@ pub enum TerminalError {
         source: nix::errno::Errno,
     },
     #[error("failed to configure PTY master: {0}")]
-    ConfigureMaster(nix::errno::Errno),
+    ConfigureMaster(rustix::io::Errno),
     #[error("terminal input forwarding failed: {0}")]
     Input(io::Error),
     #[error("terminal output forwarding failed: {0}")]
@@ -219,9 +220,9 @@ fn reopen_descriptor(
     .map_err(|source| TerminalError::Reopen { stream, source })
 }
 
-fn set_nonblocking(fd: &OwnedFd) -> Result<(), nix::errno::Errno> {
-    let flags = OFlag::from_bits_truncate(fcntl(fd, FcntlArg::F_GETFL)?);
-    fcntl(fd, FcntlArg::F_SETFL(flags | OFlag::O_NONBLOCK))?;
+fn set_nonblocking(fd: &OwnedFd) -> Result<(), rustix::io::Errno> {
+    let flags = fcntl_getfl(fd)?;
+    fcntl_setfl(fd, flags | OFlags::NONBLOCK)?;
     Ok(())
 }
 
