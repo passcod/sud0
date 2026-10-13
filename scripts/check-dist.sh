@@ -33,7 +33,7 @@ dbus-daemon --config-file="$scratch/bus.conf" --introspect >/dev/null
 mkdir -p "$scratch/root/usr/lib/systemd/system" "$scratch/root/usr/lib/sud0"
 cp "$repo/dist/systemd/system/sud0-broker.service" "$scratch/root/usr/lib/systemd/system/"
 cp /usr/lib/systemd/system/dbus.socket "$scratch/root/usr/lib/systemd/system/"
-cp "$repo/target/release/sud0-broker" "$scratch/root/usr/lib/sud0/"
+cp "$repo/target/x86_64-unknown-linux-gnu/release/sud0-broker" "$scratch/root/usr/lib/sud0/"
 systemd-analyze verify --root="$scratch/root" --man=no --generators=no \
     --recursive-errors=no sud0-broker.service
 

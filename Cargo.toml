@@ -5,7 +5,6 @@ edition = "2024"
 description = "Run0 but friendlier"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/passcod/sud0"
-rust-version = "1.89"
 publish = false
 default-run = "sud0"
 
@@ -17,7 +16,7 @@ leon = { version = "3.0.3", default-features = false }
 libc = "0.2.190"
 nix = { version = "0.31.3", features = ["fs", "process", "signal", "term", "user"] }
 postcard = { version = "1.1.3", default-features = false, features = ["alloc"] }
-rustix = { version = "1.1.5", features = ["process", "termios"] }
+rustix = { version = "1.1.5", default-features = false, features = ["fs", "process", "std", "termios"] }
 serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2.0.21"
 tokio = { version = "1.53.2", features = ["macros", "rt-multi-thread", "signal", "process", "time", "sync"] }

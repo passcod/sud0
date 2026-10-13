@@ -7,7 +7,7 @@ arch=('x86_64')
 url='https://github.com/passcod/sud0'
 license=('MIT OR Apache-2.0')
 depends=('bash' 'gcc-libs' 'glibc' 'polkit' 'systemd>=257')
-makedepends=('git' 'libxml2' 'rust>=1.89')
+makedepends=('git' 'libxml2' 'rust')
 provides=('sud0')
 conflicts=('sud0')
 backup=('etc/sud0/prompt.template')

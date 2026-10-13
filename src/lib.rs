@@ -1,5 +1,8 @@
 //! Shared protocol and presentation primitives for sud0.
 
+#[cfg(not(all(target_arch = "x86_64", target_os = "linux", target_env = "gnu")))]
+compile_error!("sud0 supports only the x86_64-unknown-linux-gnu target");
+
 pub mod auth_agent;
 pub mod broker_auth;
 pub mod broker_service;
