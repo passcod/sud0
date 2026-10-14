@@ -57,7 +57,7 @@ respectable; it makes the exact conditional theorems reviewable.
 | ZBUS | SAFE-DEP | D-Bus message encoding and FD transfer (pidfd credentials) behave as documented | zbus 5.19.0 / zvariant 5.15.0, feature tokio | accepted | version change |
 | DEPLOY | ENVIRONMENT | Deployment restrictions per `docs/deployment.md` (executor caller contract, sandbox, provenance) | deployment doc | accepted | deployment change |
 | BUILD-GATE | IMPLEMENTATION | The checked make entrypoint proves toolchain channel/host, fixed target, and rustix linux_raw backend for shippable artifacts | scripts/ensure-build.sh | accepted | gate or toolchain change |
-| REJECT-RUSTIX-TIOCSCTTY | rejected | — | rustix 1.1.5 `ioctl_tiocsctty` | rejected | upstream fix |
+| REJECT-RUSTIX-TIOCSCTTY | rejected | — | rustix 1.1.5 `ioctl_tiocsctty` | rejected | upstream fix; [filed](https://github.com/bytecodealliance/rustix/issues/1703) |
 
 ## Detailed entries
 
@@ -259,5 +259,5 @@ respectable; it makes the exact conditional theorems reviewable.
   its documented argument word, the force form is unreachable through it,
   and consumers reasoning from the documentation get a false model of
   the syscall. sud0 retains the local null-pointer `libc::ioctl` leaf
-  until an upstream-corrected release is audited. Upstream should be
-  notified.
+  until an upstream-corrected release is audited. Upstream has been
+  notified: <https://github.com/bytecodealliance/rustix/issues/1703>
