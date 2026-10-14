@@ -35,7 +35,7 @@ $ sud0 --setenv TERM --pty /usr/bin/bash
 ```console
 $ make check
 # make install
-# systemctl daemon-reload
+$ systemctl daemon-reload
 ```
 
 Do not run `make check` as root.
@@ -44,6 +44,7 @@ Alternatively, on Arch Linux:
 
 ```console
 $ makepkg -si -D packaging/arch
+$ systemctl start sud0-broker
 ```
 
 ## Troubleshooting
