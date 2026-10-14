@@ -42,10 +42,15 @@ release: ensure-unprivileged ensure-build
 	$(CARGO) build --release --locked --bins --target $(TARGET)
 	SUD0_SOURCE_IDENTITY="$(SUD0_SOURCE_IDENTITY)" ./scripts/release-stamp.sh
 
+# Tests and clippy run in the release profile so the checked tree shares one
+# compilation with the shippable artifacts and the pre-ship check exercises
+# the profile that ships (clippy lints with debug_assertions off, matching
+# release codegen). Local dev-profile testing stays available via
+# `cargo test` directly.
 check: ensure-unprivileged ensure-build
 	$(CARGO) fmt -- --check
-	$(CARGO) test --locked --all-targets --target $(TARGET)
-	$(CARGO) clippy --locked --all-targets --target $(TARGET) -- -D warnings
+	$(CARGO) test --release --locked --all-targets --target $(TARGET)
+	$(CARGO) clippy --release --locked --all-targets --target $(TARGET) -- -D warnings
 	$(MAKE) release
 	./scripts/check-dist.sh
 
