@@ -1,1 +1,4 @@
 /target/
+packaging/arch/pkg
+packaging/arch/sud0
+packaging/arch/*.pkg.*
