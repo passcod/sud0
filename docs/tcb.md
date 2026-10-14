@@ -246,10 +246,18 @@ respectable; it makes the exact conditional theorems reviewable.
 
 ### REJECT-RUSTIX-TIOCSCTTY — rejected premise
 
-- **Proposition (rejected):** rustix 1.1.5 `process::ioctl_tiocsctty`
+- **Proposition (rejected):** rustix `process::ioctl_tiocsctty` (present
+  since v0.38.9, commit 241da539, through 1.1.5 and current main)
   documents `ioctl(fd, TIOCSCTTY, 0)` but its `Ioctl::as_ptr`
-  implementation passes `as_ptr(&0_u32)` — a non-null stack address.
-  Linux consumes that word as the force flag, silently requesting
-  force-steal. The API is not used; sud0 retains the local
-  null-pointer `libc::ioctl` leaf until an upstream-corrected release is
-  audited. Upstream should be notified.
+  implementation passes `as_ptr(&0_u32)` — the non-null address of a
+  stack-local zero — as the third syscall word. Linux's `tiocsctty()`
+  requires that word to be exactly 1 (with `CAP_SYS_ADMIN`) to request
+  force-steal (drivers/tty/tty_jobctrl.c; the `arg == 1` check is
+  unchanged since 2.6.12), and a stack address is never 1, so the
+  observable behavior coincidentally matches the documented non-forcing
+  operation today. The API is nevertheless rejected: it does not deliver
+  its documented argument word, the force form is unreachable through it,
+  and consumers reasoning from the documentation get a false model of
+  the syscall. sud0 retains the local null-pointer `libc::ioctl` leaf
+  until an upstream-corrected release is audited. Upstream should be
+  notified.
